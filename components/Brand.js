@@ -1,5 +1,8 @@
+"use client";
+
 import Link from "next/link";
 import { ShieldCheck } from "lucide-react";
+import { useLanguage } from "@/lib/LanguageContext";
 
 export default function Brand({
   compact = false,
@@ -7,6 +10,8 @@ export default function Brand({
   href = "/",
   className = "",
 }) {
+  const { t, language } = useLanguage();
+
   const content = (
     <div className={`flex items-center gap-2.5 ${className}`}>
       {/* Icon Shield Badge */}
@@ -28,7 +33,7 @@ export default function Brand({
                 inverted ? "text-white" : "text-slate-900"
               }`}
             >
-              Nirbhor
+              {language === "bn" ? "নির্ভর" : "Nirbhor"}
             </span>
             <span
               className={`rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider ${
@@ -37,7 +42,7 @@ export default function Brand({
                   : "bg-emerald-50 text-[#00695C]"
               }`}
             >
-              নির্ভর
+              {language === "bn" ? "Nirbhor" : "নির্ভর"}
             </span>
           </div>
           <p
@@ -45,7 +50,7 @@ export default function Brand({
               inverted ? "text-emerald-100/80" : "text-slate-500"
             }`}
           >
-            Verified Trust Portal
+            {t.brand?.tagline || "Verified Trust Portal"}
           </p>
         </div>
       )}
@@ -54,7 +59,7 @@ export default function Brand({
 
   if (href) {
     return (
-      <Link href={href} className="inline-flex focus:outline-none">
+      <Link href={href} className="inline-block">
         {content}
       </Link>
     );
