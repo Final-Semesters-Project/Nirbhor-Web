@@ -91,10 +91,10 @@ export default function AuthScreen({ initialMode = "register" }) {
       setLoading(false);
       setStatusMessage({
         type: "success",
-        text: "Login successful! Redirecting to Provider Dashboard... / লগইন সফল হয়েছে! ড্যাশবোর্ডে নিয়ে যাওয়া হচ্ছে...",
+        text: "Login successful! Redirecting to Provider Profile Setup... / লগইন সফল হয়েছে! প্রোফাইল সেটআপে নিয়ে যাওয়া হচ্ছে...",
       });
       setTimeout(() => {
-        router.push("/provider/profile");
+        router.push("/provider/setup");
       }, 1000);
     }, 800);
   };

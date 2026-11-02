@@ -97,9 +97,9 @@ export default function ProviderSetupPage() {
 
   const handleSaveAndContinue = () => {
     setSaving(true);
-    showToast("Profile setup verified! Redirecting to Provider Profile & Dashboard...");
+    showToast("Profile setup verified! Redirecting to Provider Home Dashboard... / প্রোফাইল সেটআপ সম্পন্ন! হোম স্ক্রিনে নিয়ে যাওয়া হচ্ছে...");
     setTimeout(() => {
-      router.push("/provider/profile");
+      router.push("/provider/home");
     }, 1000);
   };
 
