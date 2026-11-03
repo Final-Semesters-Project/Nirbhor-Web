@@ -409,10 +409,6 @@ export default function AuthScreen({ defaultMode = "register" }) {
       });
 
       saveAuthSession(response);
-      if (typeof window !== "undefined") {
-        if (regData.name_en?.trim()) localStorage.setItem("user_name_en", regData.name_en.trim());
-        if (regData.name_bn?.trim()) localStorage.setItem("user_name_bn", regData.name_bn.trim());
-      }
 
       const regSuccessMsg = isBn
         ? "আপনার সেবাদাতা অ্যাকাউন্ট সফলভাবে তৈরি হয়েছে! নির্ভরে স্বাগতম।"

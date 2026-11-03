@@ -94,8 +94,14 @@ export default function ProviderProfilePage() {
   // Global Toast Feedback
   const { showToast } = useToast();
 
-  // 1. Initial Auth Token Retrieval
+  // 1. Initial Auth Token Retrieval & clean legacy session artifacts
   useEffect(() => {
+    if (typeof window !== "undefined") {
+      localStorage.removeItem("user_name_bn");
+      localStorage.removeItem("user_name_en");
+      localStorage.removeItem("user_name");
+      localStorage.removeItem("user_phone");
+    }
     const savedToken = getAccessToken();
     setToken(savedToken);
   }, []);
@@ -150,34 +156,17 @@ export default function ProviderProfilePage() {
     }
   }, [token, loadProfileData]);
 
-  // Determine localized name dynamically matching the active language
+  // Determine localized name strictly from live authenticated user data (no stale localStorage pollution)
   const getLocalizedName = useCallback(() => {
-    if (language === "bn") {
-      const storedBn =
-        typeof window !== "undefined"
-          ? localStorage.getItem("user_name_bn")
-          : null;
-      if (storedBn) return storedBn;
-      if (userData?.name && /[\u0980-\u09FF]/.test(userData.name)) {
-        return userData.name;
-      }
-      return userData?.name || "সেবাদাতা";
-    } else {
-      const storedEn =
-        typeof window !== "undefined"
-          ? localStorage.getItem("user_name_en")
-          : null;
-      if (storedEn) return storedEn;
-      if (userData?.name && !/[\u0980-\u09FF]/.test(userData.name)) {
-        return userData.name;
-      }
-      return userData?.name || "Service Provider";
+    if (userData?.name) {
+      return userData.name;
     }
+    return language === "bn" ? "সেবাদাতা" : "Service Provider";
   }, [language, userData]);
 
-  // Sync localized name to formData only on initial load or if user hasn't edited name
+  // Sync localized name to formData only on initial load or when live userData updates
   useEffect(() => {
-    const locName = getLocalizedName();
+    if (!userData?.name) return;
     setFormData((prev) => {
       // Don't overwrite if user has actively modified the name
       if (initialData && prev.name !== initialData.name) {
@@ -185,11 +174,11 @@ export default function ProviderProfilePage() {
       }
       return {
         ...prev,
-        name: locName,
+        name: userData.name,
       };
     });
-    setInitialData((prev) => (prev ? { ...prev, name: locName } : null));
-  }, [getLocalizedName]);
+    setInitialData((prev) => (prev ? { ...prev, name: userData.name } : null));
+  }, [userData]);
 
   // Handle Location from Google Maps
   const handleLocationConfirmed = ({ lat, lng, address }) => {
@@ -388,13 +377,6 @@ export default function ProviderProfilePage() {
           ? "প্রোফাইল তথ্য সফলভাবে আপডেট হয়েছে!"
           : "Profile details updated successfully!");
       showToast(successMsg, "success");
-
-      // Update name in local storage if updated
-      if (payload.name) {
-        if (payload.name_bn) localStorage.setItem("user_name_bn", payload.name_bn);
-        if (payload.name_en) localStorage.setItem("user_name_en", payload.name_en);
-        localStorage.setItem("user_name", payload.name);
-      }
 
       setUploadedPhotoUrl("");
       setUploadedPhotoPublicId("");
