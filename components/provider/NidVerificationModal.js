@@ -105,10 +105,9 @@ export default function NidVerificationModal({
   };
 
   const verificationStatus = userMeData?.verification_status || "not_initiated";
-  // #0 "not_initiated", #3 "rejected" -> can change picture & submit
-  // #1 "pending", #2 "approved" -> locked, picture cannot be changed, submit disabled
-  const isLocked = verificationStatus === "pending" || verificationStatus === "approved";
-  const canEdit = verificationStatus === "not_initiated" || verificationStatus === "rejected";
+  // Locked only AFTER review is completed (approved). Before that (pending, rejected, not_initiated), can be changed.
+  const isLocked = verificationStatus === "approved";
+  const canEdit = verificationStatus !== "approved";
 
   const clearFront = () => {
     if (isLocked) return;
@@ -277,19 +276,19 @@ export default function NidVerificationModal({
             </div>
           )}
 
-          {/* Pending & Locked Alert */}
+          {/* Pending Alert (Under Review, editable before admin approval) */}
           {verificationStatus === "pending" && (
             <div className="rounded-2xl border border-amber-200 bg-amber-50/80 p-4 text-xs font-medium text-amber-900 flex items-start gap-3">
               <Clock className="h-5 w-5 text-amber-600 shrink-0 mt-0.5" />
               <div className="space-y-1">
                 <span className="font-bold text-amber-800 flex items-center gap-1.5 text-sm">
-                  <Lock size={14} />
-                  {language === "bn" ? "যাচাইকরণ প্রক্রিয়াধীন ও লক করা আছে" : "Verification Under Review (Locked)"}
+                  <Clock size={15} />
+                  {language === "bn" ? "যাচাইকরণ পর্যালোচনায় রয়েছে" : "Verification Under Review"}
                 </span>
                 <p className="text-amber-800 leading-relaxed">
                   {language === "bn"
-                    ? "আপনার জাতীয় পরিচয়পত্র জমা দেওয়া হয়েছে এবং নির্ভর টিম এটি যাচাই করছে। পর্যালোচনা চলাকালীন ছবি পরিবর্তন বা পুনরায় জমা দেওয়া যাবে না।"
-                    : "Your National ID has been submitted and is currently being reviewed. Documents cannot be modified while pending review."}
+                    ? "আপনার জাতীয় পরিচয়পত্র জমা দেওয়া হয়েছে এবং নির্ভর টিম এটি পর্যালোচনা করছে। অ্যাডমিন কর্তৃক অনুমোদনের পূর্ব পর্যন্ত আপনি চাইলে ছবি পরিবর্তন বা আপডেট করতে পারেন।"
+                    : "Your National ID has been submitted and is under review. You can update or replace your photos until the admin completes review."}
                 </p>
               </div>
             </div>
@@ -533,16 +532,14 @@ export default function NidVerificationModal({
               disabled
               title={
                 language === "bn"
-                  ? "এনআইডি জমা দেওয়া হয়েছে এবং লক করা আছে।"
-                  : "NID is submitted and locked."
+                  ? "এনআইডি যাচাই সম্পন্ন হয়েছে এবং স্থায়ীভাবে লক করা আছে।"
+                  : "NID is verified and locked."
               }
               className="flex items-center gap-2 rounded-xl bg-slate-200 border border-slate-300 px-6 py-2.5 text-xs font-bold text-slate-500 cursor-not-allowed shadow-none"
             >
               <Lock size={15} className="text-slate-400" />
               <span>
-                {verificationStatus === "approved"
-                  ? (language === "bn" ? "যাচাইকৃত (লক করা)" : "Verified (Locked)")
-                  : (language === "bn" ? "জমা দেওয়া হয়েছে (লক করা)" : "Submitted (Locked)")}
+                {language === "bn" ? "যাচাইকৃত (লক করা)" : "Verified (Locked)"}
               </span>
             </button>
           ) : (
@@ -560,7 +557,11 @@ export default function NidVerificationModal({
               ) : (
                 <>
                   <Upload size={15} />
-                  <span>{d.submitNidBtn}</span>
+                  <span>
+                    {userMeData?.nid_url_front || userMeData?.nid_url_back
+                      ? (language === "bn" ? "পরিবর্তন সংরক্ষণ করুন" : "Save Changes")
+                      : d.submitNidBtn}
+                  </span>
                 </>
               )}
             </button>

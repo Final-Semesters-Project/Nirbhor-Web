@@ -972,38 +972,38 @@ export default function ProviderProfilePage() {
               <span className="text-xs font-bold text-slate-400 uppercase tracking-wider block">
                 {p.nidStatusTitle}
               </span>
-              <div className="flex items-center gap-2">
-                {verificationStatus === "approved" ? (
+              {verificationStatus === "approved" ? (
+                <div className="flex items-center gap-2">
                   <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1 text-xs font-bold text-[#00695C] border border-emerald-200">
                     <ShieldCheck size={14} />
                     <span>{p.nidVerified}</span>
                   </span>
-                ) : verificationStatus === "pending" ? (
+                </div>
+              ) : verificationStatus === "pending" ? (
+                <div className="flex items-center gap-2">
                   <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-50 px-3 py-1 text-xs font-bold text-amber-700 border border-amber-200">
                     <Clock size={14} />
                     <span>{p.nidPending}</span>
                   </span>
-                ) : verificationStatus === "rejected" ? (
+                </div>
+              ) : verificationStatus === "rejected" ? (
+                <div className="flex items-center gap-2">
                   <span className="inline-flex items-center gap-1.5 rounded-full bg-red-50 px-3 py-1 text-xs font-bold text-red-700 border border-red-200">
                     <AlertTriangle size={14} />
                     <span>{p.nidRejected}</span>
                   </span>
-                ) : (
-                  <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-600">
-                    <span>{p.nidNotUploaded}</span>
-                  </span>
-                )}
-              </div>
+                </div>
+              ) : null}
             </div>
 
-            {/* Action: Lock badge for 1 (pending) & 2 (approved), or Upload/Change for 0 (not_initiated) & 3 (rejected) */}
+            {/* Action: Lock badge only AFTER review (approved), or Change NID button before that if already uploaded */}
             <div>
-              {verificationStatus === "pending" || verificationStatus === "approved" ? (
+              {verificationStatus === "approved" ? (
                 <div className="inline-flex items-center gap-1.5 rounded-xl bg-slate-100 border border-slate-200 px-3.5 py-2 text-xs font-bold text-slate-500 shadow-2xs select-none">
                   <Lock size={14} className="text-slate-400" />
                   <span>{language === "bn" ? "লক করা আছে" : "Locked"}</span>
                 </div>
-              ) : (
+              ) : userData?.nid_url_front || userData?.nid_url_back ? (
                 <button
                   type="button"
                   onClick={() => setIsNidModalOpen(true)}
@@ -1011,12 +1011,10 @@ export default function ProviderProfilePage() {
                 >
                   <Upload size={14} />
                   <span>
-                    {userData?.nid_url_front || userData?.nid_url_back
-                      ? (language === "bn" ? "এনআইডি পরিবর্তন করুন" : "Change NID")
-                      : p.manageNid}
+                    {language === "bn" ? "এনআইডি পরিবর্তন করুন" : "Change NID"}
                   </span>
                 </button>
-              )}
+              ) : null}
             </div>
           </div>
 
@@ -1041,7 +1039,7 @@ export default function ProviderProfilePage() {
                     <FileCheck2 size={14} className="text-[#00695C]" />
                     <span>{language === "bn" ? "এনআইডি সামনের পিঠ" : "NID Front Side"}</span>
                   </span>
-                  {(verificationStatus === "pending" || verificationStatus === "approved") && (
+                  {verificationStatus === "approved" && (
                     <span className="inline-flex items-center gap-1 text-[10px] font-bold text-slate-500 bg-slate-200/80 px-2 py-0.5 rounded-md">
                       <Lock size={10} />
                       {language === "bn" ? "লক" : "Locked"}
@@ -1070,7 +1068,7 @@ export default function ProviderProfilePage() {
                     <FileCheck2 size={14} className="text-[#00695C]" />
                     <span>{language === "bn" ? "এনআইডি পেছনের পিঠ" : "NID Back Side"}</span>
                   </span>
-                  {(verificationStatus === "pending" || verificationStatus === "approved") && (
+                  {verificationStatus === "approved" && (
                     <span className="inline-flex items-center gap-1 text-[10px] font-bold text-slate-500 bg-slate-200/80 px-2 py-0.5 rounded-md">
                       <Lock size={10} />
                       {language === "bn" ? "লক" : "Locked"}
