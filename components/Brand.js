@@ -11,6 +11,7 @@ export default function Brand({
   className = "",
 }) {
   const { t, language } = useLanguage();
+  const isBn = language === "bn";
 
   const content = (
     <div className={`flex items-center gap-2.5 ${className}`}>
@@ -33,7 +34,7 @@ export default function Brand({
                 inverted ? "text-white" : "text-slate-900"
               }`}
             >
-              {language === "bn" ? "নির্ভর" : "Nirbhor"}
+              {isBn ? "নির্ভর" : "Nirbhor"}
             </span>
             <span
               className={`rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider ${
@@ -42,7 +43,7 @@ export default function Brand({
                   : "bg-emerald-50 text-[#00695C]"
               }`}
             >
-              {language === "bn" ? "Nirbhor" : "নির্ভর"}
+              {isBn ? "বিশ্বস্ত" : "Verified"}
             </span>
           </div>
           <p
@@ -50,7 +51,7 @@ export default function Brand({
               inverted ? "text-emerald-100/80" : "text-slate-500"
             }`}
           >
-            {t.brand?.tagline || "Verified Trust Portal"}
+            {t.brand?.tagline || (isBn ? "বিশ্বস্ত সেবা পোর্টাল" : "Verified Trust Portal")}
           </p>
         </div>
       )}

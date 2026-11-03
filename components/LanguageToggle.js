@@ -15,7 +15,7 @@ export default function LanguageToggle({ className = "", size = "md", showLabel 
       {showLabel && (
         <span className="text-xs font-semibold text-slate-500 flex items-center gap-1.5">
           <Globe size={14} className="text-[#00695C]" />
-          <span>ভাষা / Lang:</span>
+          <span>{isBn ? "ভাষা:" : "Language:"}</span>
         </span>
       )}
 
@@ -57,4 +57,3 @@ export default function LanguageToggle({ className = "", size = "md", showLabel 
     </div>
   );
 }
-

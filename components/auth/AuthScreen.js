@@ -5,62 +5,68 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   ShieldCheck,
-  Users,
-  Award,
-  Lock,
-  User,
-  Phone,
+  CheckCircle2,
+  AlertCircle,
   Eye,
   EyeOff,
+  User,
+  Phone,
+  Lock,
   ArrowRight,
-  CheckCircle2,
-  Sparkles,
-  Zap,
+  ArrowLeft,
   Check,
-  AlertCircle,
-  MapPin,
-  Navigation,
-  Globe,
-  Sliders,
-  Smartphone,
   Wrench,
-  Compass,
   ChevronDown,
-  ChevronUp,
   Hammer,
   Truck,
+  Sparkles,
   Layers,
+  MapPin,
+  Sliders,
+  Smartphone,
+  Map as MapIcon,
+  Users,
+  Award,
   X,
 } from "lucide-react";
-import Brand from "@/components/Brand";
-import LanguageToggle from "@/components/LanguageToggle";
 import { useLanguage } from "@/lib/LanguageContext";
+import { saveAuthSession } from "@/lib/auth";
 import {
-  loginUser,
   registerProviderAccount,
+  loginUser,
   fetchCategories,
   fetchSkillsByCategory,
   FALLBACK_CATEGORIES,
   FALLBACK_SKILLS_BY_CATEGORY,
 } from "@/lib/api";
-import { saveAuthSession } from "@/lib/auth";
+import GoogleMapPickerModal from "@/components/GoogleMapPickerModal";
 
-export default function AuthScreen({ initialMode = "register" }) {
+export default function AuthScreen({ defaultMode = "register" }) {
   const router = useRouter();
-  const { language, setLanguage, t, isMounted } = useLanguage();
-  const [mode, setMode] = useState(initialMode); // 'register' or 'login'
+  const { t, language } = useLanguage();
+  const isBn = language === "bn";
 
-  // ==========================================
-  // PROVIDER REGISTRATION STATE
-  // ==========================================
+  // Tab mode: 'register' or 'login'
+  const [mode, setMode] = useState(defaultMode);
+
+  // 3-Step Wizard Navigation:
+  // Step 1: Personal & Account Info
+  // Step 2: Skills & Specialization
+  // Step 3: Location & Working Radius
+  const [registerStep, setRegisterStep] = useState(1);
+
+  // Google Maps Picker Modal state
+  const [isMapModalOpen, setIsMapModalOpen] = useState(false);
+
+  // Form State matching backend ProviderRegisterSchema
   const [regData, setRegData] = useState({
     name_en: "",
     name_bn: "",
     phone: "",
     password: "",
-    preferred_lang: "bn",
-    skill_ids: [4], // default Electrician (category 2)
-    latitude: 23.8103, // default Dhaka center
+    preferred_lang: language,
+    skill_ids: [], // default: none selected (user manually selects)
+    latitude: 23.8103, // default: Dhaka
     longitude: 90.4125,
     working_radius_km: 3,
     has_smartphone: true,
@@ -68,7 +74,7 @@ export default function AuthScreen({ initialMode = "register" }) {
     agreeTerms: true,
   });
 
-  // Sync preferred_lang with global language on change
+  // Keep preferred_lang in sync when global language changes
   useEffect(() => {
     setRegData((prev) => ({
       ...prev,
@@ -83,8 +89,7 @@ export default function AuthScreen({ initialMode = "register" }) {
   const [loadingCategories, setLoadingCategories] = useState(false);
   const [categorySkills, setCategorySkills] = useState(FALLBACK_SKILLS_BY_CATEGORY);
   const [loadingSkillsMap, setLoadingSkillsMap] = useState({});
-  // Expanded category IDs (multi-open supported, defaults to category 2: Home Repairs)
-  const [expandedCategoryIds, setExpandedCategoryIds] = useState([2]);
+  const [expandedCategoryIds, setExpandedCategoryIds] = useState([]); // collapsed by default
 
   // Load categories and initial skills from backend API
   useEffect(() => {
@@ -97,7 +102,7 @@ export default function AuthScreen({ initialMode = "register" }) {
         if (!isCancelled && Array.isArray(catList) && catList.length > 0) {
           setCategories(catList);
 
-          // Fetch skills for categories
+          // Fetch skills for all returned categories
           for (const cat of catList) {
             loadSkillsForCategory(cat.id, language);
           }
@@ -115,7 +120,7 @@ export default function AuthScreen({ initialMode = "register" }) {
     };
   }, [language]);
 
-  // Helper to load skills for a specific category
+  // Load skills for a specific category
   const loadSkillsForCategory = async (catId, currentLang = language) => {
     setLoadingSkillsMap((prev) => ({ ...prev, [catId]: true }));
     try {
@@ -137,42 +142,46 @@ export default function AuthScreen({ initialMode = "register" }) {
       if (prev.includes(catId)) {
         return prev.filter((id) => id !== catId);
       } else {
+        if (!categorySkills[catId] || categorySkills[catId].length === 0) {
+          loadSkillsForCategory(catId, language);
+        }
         return [...prev, catId];
       }
     });
+  };
 
-    if (!categorySkills[catId] || categorySkills[catId].length === 0) {
-      loadSkillsForCategory(catId);
+  // Localized Name helper
+  const getLocalizedName = (item) => {
+    if (!item) return "";
+    if (isBn) {
+      return item.name_bn || item.name || "";
     }
+    return item.name_en || item.name || "";
   };
 
   // Category Icon helper
   const getCategoryIcon = (catId, catName = "") => {
     const name = String(catName).toLowerCase();
     if (catId === 1 || name.includes("manual") || name.includes("শ্রম")) {
-      return <Hammer size={16} />;
+      return <Hammer size={18} />;
     }
     if (catId === 2 || name.includes("repair") || name.includes("মেরামত")) {
-      return <Wrench size={16} />;
+      return <Wrench size={18} />;
     }
     if (catId === 3 || name.includes("clean") || name.includes("পরিষ্কার")) {
-      return <Sparkles size={16} />;
+      return <Sparkles size={18} />;
     }
     if (catId === 4 || name.includes("transport") || name.includes("পরিবহন")) {
-      return <Truck size={16} />;
+      return <Truck size={18} />;
     }
-    return <Layers size={16} />;
+    return <Layers size={18} />;
   };
 
-  // Toggle skill selection (multi-select across categories)
+  // Toggle skill selection
   const handleToggleSkill = (skillId) => {
     setRegData((prev) => {
       const exists = prev.skill_ids.includes(skillId);
       if (exists) {
-        if (prev.skill_ids.length === 1) {
-          // Keep at least one skill selected
-          return prev;
-        }
         return {
           ...prev,
           skill_ids: prev.skill_ids.filter((id) => id !== skillId),
@@ -194,13 +203,12 @@ export default function AuthScreen({ initialMode = "register" }) {
         skills.forEach((s) => map.set(s.id, s));
       }
     });
-    // Add fallbacks if any missing
     Object.values(FALLBACK_SKILLS_BY_CATEGORY).forEach((skills) => {
       skills.forEach((s) => {
         if (!map.has(s.id)) {
           map.set(s.id, {
             id: s.id,
-            name: language === "bn" ? s.name_bn : s.name,
+            name: isBn ? s.name_bn : s.name,
             category_id: s.category_id,
           });
         }
@@ -220,95 +228,48 @@ export default function AuthScreen({ initialMode = "register" }) {
     rememberMe: true,
   });
 
-  // Common UI State
+  // UI state
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [statusMessage, setStatusMessage] = useState(null);
 
-  // Location detection state
-  const [detectingLocation, setDetectingLocation] = useState(false);
-  const [locationNotice, setLocationNotice] = useState(null);
-
   // Password strength calculation
   const getPasswordStrength = (pwd) => {
-    if (!pwd) return { score: 0, label: "Empty", color: "bg-slate-200" };
+    if (!pwd) return { score: 0, label: "", color: "bg-slate-200" };
     if (pwd.length < 8) {
       return {
         score: 1,
-        label: t.register?.passwordStrengthWeak || "Weak",
+        label: t.register?.passwordStrengthWeak || (isBn ? "দুর্বল" : "Weak"),
         color: "bg-rose-500",
       };
     }
     if (pwd.length < 12) {
       return {
         score: 2,
-        label: t.register?.passwordStrengthMedium || "Medium",
+        label: t.register?.passwordStrengthMedium || (isBn ? "মাঝারি" : "Medium"),
         color: "bg-amber-500",
       };
     }
     return {
       score: 3,
-      label: t.register?.passwordStrengthStrong || "Strong",
+      label: t.register?.passwordStrengthStrong || (isBn ? "শক্তিশালী" : "Strong"),
       color: "bg-emerald-600",
     };
   };
 
   const strength = getPasswordStrength(regData.password);
 
-  // Browser Geolocation Detection
-  const handleDetectLocation = () => {
-    if (!navigator.geolocation) {
-      setLocationNotice(
-        language === "bn"
-          ? "আপনার ব্রাউজার জিপিএস সমর্থন করে না।"
-          : "Geolocation is not supported by your browser."
-      );
-      return;
-    }
-
-    setDetectingLocation(true);
-    setLocationNotice(null);
-
-    navigator.geolocation.getCurrentPosition(
-      (position) => {
-        const lat = Number(position.coords.latitude.toFixed(6));
-        const lon = Number(position.coords.longitude.toFixed(6));
-        setRegData((prev) => ({
-          ...prev,
-          latitude: lat,
-          longitude: lon,
-        }));
-        setDetectingLocation(false);
-        setLocationNotice(
-          language === "bn"
-            ? `অবস্থান শনাক্ত হয়েছে: ${lat}, ${lon}`
-            : `Location detected: ${lat}, ${lon}`
-        );
-      },
-      (error) => {
-        setDetectingLocation(false);
-        console.warn("GPS detection error:", error);
-        setLocationNotice(
-          language === "bn"
-            ? "জিপিএস অবস্থান নেওয়া যায়নি। ডিফল্ট মান ব্যবহার করা হয়েছে।"
-            : "Could not retrieve GPS location. Default coordinates applied."
-        );
-      },
-      { timeout: 10000, enableHighAccuracy: true }
-    );
-  };
-
   // ==========================================
-  // SUBMIT: PROVIDER REGISTRATION
+  // STEP 1 VALIDATION -> GO TO STEP 2
   // ==========================================
-  const handleRegisterSubmit = async (e) => {
+  const handleProceedToStep2 = (e) => {
     e.preventDefault();
     setStatusMessage(null);
 
     if (!regData.name_en.trim()) {
       setStatusMessage({
         type: "error",
-        text: t.register?.errors?.nameEnRequired || "Please enter your name in English.",
+        text: t.register?.errors?.nameEnRequired || (isBn ? "অনুগ্রহ করে আপনার পুরো নাম ইংরেজিতে লিখুন।" : "Please enter your full name in English."),
       });
       return;
     }
@@ -316,18 +277,21 @@ export default function AuthScreen({ initialMode = "register" }) {
     if (!regData.name_bn.trim()) {
       setStatusMessage({
         type: "error",
-        text: t.register?.errors?.nameBnRequired || "Please enter your name in Bangla.",
+        text: t.register?.errors?.nameBnRequired || (isBn ? "অনুগ্রহ করে আপনার পুরো নাম বাংলায় লিখুন।" : "Please enter your full name in Bangla."),
       });
       return;
     }
 
+    const phoneClean = regData.phone.trim().replace(/[\s-]/g, "");
     const phonePattern = /^01[3-9]\d{8}$/;
-    if (!phonePattern.test(regData.phone.trim())) {
+    if (!phonePattern.test(phoneClean)) {
       setStatusMessage({
         type: "error",
         text:
           t.register?.errors?.phoneInvalid ||
-          "Please enter a valid 11-digit Bangladeshi mobile number (013-019).",
+          (isBn
+            ? "অনুগ্রহ করে সঠিক ১১ ডিজিটের বাংলাদেশি মোবাইল নম্বর দিন (০১ দিয়ে শুরু)।"
+            : "Please enter a valid 11-digit Bangladeshi mobile number (013-019)."),
       });
       return;
     }
@@ -337,15 +301,64 @@ export default function AuthScreen({ initialMode = "register" }) {
         type: "error",
         text:
           t.register?.errors?.passwordTooShort ||
-          "Password must be at least 8 characters long.",
+          (isBn
+            ? "পাসওয়ার্ড কমপক্ষে ৮ অক্ষরের হতে হবে।"
+            : "Password must be at least 8 characters long."),
       });
       return;
     }
 
+    setRegisterStep(2);
+  };
+
+  // ==========================================
+  // STEP 2 VALIDATION -> GO TO STEP 3
+  // ==========================================
+  const handleProceedToStep3 = (e) => {
+    e.preventDefault();
+    setStatusMessage(null);
+
     if (!regData.skill_ids || regData.skill_ids.length === 0) {
       setStatusMessage({
         type: "error",
-        text: t.register?.errors?.skillRequired || "Please select at least one skill.",
+        text:
+          t.register?.errors?.skillRequired ||
+          (isBn
+            ? "অনুগ্রহ করে কমপক্ষে একটি কাজের দক্ষতা নির্বাচন করুন।"
+            : "Please select at least one skill to continue."),
+      });
+      return;
+    }
+
+    setRegisterStep(3);
+  };
+
+  // Handler when location is picked from Google Maps
+  const handleLocationConfirmed = ({ latitude, longitude, address }) => {
+    setRegData((prev) => ({
+      ...prev,
+      latitude: Number(latitude),
+      longitude: Number(longitude),
+      base_address: address || prev.base_address,
+    }));
+  };
+
+  // ==========================================
+  // SUBMIT: FINAL PROVIDER REGISTRATION (STEP 3)
+  // ==========================================
+  const handleRegisterSubmit = async (e) => {
+    e.preventDefault();
+    setStatusMessage(null);
+
+    const addressClean = (regData.base_address || "").trim();
+    if (addressClean.length < 5) {
+      setStatusMessage({
+        type: "error",
+        text:
+          t.register?.errors?.addressMinLength ||
+          (isBn
+            ? "ঠিকানা কমপক্ষে ৫ অক্ষরের হতে হবে।"
+            : "Please enter or pin a base address of at least 5 characters."),
       });
       return;
     }
@@ -355,17 +368,9 @@ export default function AuthScreen({ initialMode = "register" }) {
         type: "error",
         text:
           t.register?.errors?.radiusInvalid ||
-          "Working radius must be between 1 and 5 km.",
-      });
-      return;
-    }
-
-    if (regData.base_address && regData.base_address.trim().length < 5) {
-      setStatusMessage({
-        type: "error",
-        text:
-          t.register?.errors?.addressMinLength ||
-          "Base address must be at least 5 characters.",
+          (isBn
+            ? "কাজের পরিধি ১ থেকে ৫ কিমি-এর মধ্যে হতে হবে।"
+            : "Working radius must be between 1 and 5 km."),
       });
       return;
     }
@@ -375,7 +380,9 @@ export default function AuthScreen({ initialMode = "register" }) {
         type: "error",
         text:
           t.register?.errors?.termsRequired ||
-          "Please agree to the Terms of Service.",
+          (isBn
+            ? "অনুগ্রহ করে ব্যবহারের শর্তাবলীতে সম্মতি দিন।"
+            : "Please accept the Terms of Service to continue."),
       });
       return;
     }
@@ -383,18 +390,20 @@ export default function AuthScreen({ initialMode = "register" }) {
     setLoading(true);
 
     try {
+      const phoneClean = regData.phone.trim().replace(/[\s-]/g, "");
+
       const response = await registerProviderAccount({
-        name_en: regData.name_en,
-        name_bn: regData.name_bn,
-        phone: regData.phone,
+        name_en: regData.name_en.trim(),
+        name_bn: regData.name_bn.trim(),
+        phone: phoneClean,
         password: regData.password,
         preferred_lang: regData.preferred_lang || language,
         skill_ids: regData.skill_ids,
-        latitude: regData.latitude,
-        longitude: regData.longitude,
-        working_radius_km: regData.working_radius_km,
-        has_smartphone: regData.has_smartphone,
-        base_address: regData.base_address || null,
+        latitude: Number(regData.latitude) || 23.8103,
+        longitude: Number(regData.longitude) || 90.4125,
+        working_radius_km: Number(regData.working_radius_km),
+        has_smartphone: Boolean(regData.has_smartphone),
+        base_address: addressClean,
       });
 
       saveAuthSession(response);
@@ -403,7 +412,9 @@ export default function AuthScreen({ initialMode = "register" }) {
         type: "success",
         text:
           t.register?.successMessage ||
-          "Provider registered successfully! Redirecting...",
+          (isBn
+            ? "আপনার সেবাদাতা অ্যাকাউন্ট তৈরি হয়েছে। হোম পেজে নিয়ে যাওয়া হচ্ছে..."
+            : "Provider registered successfully! Redirecting to workspace..."),
       });
 
       setTimeout(() => {
@@ -413,7 +424,11 @@ export default function AuthScreen({ initialMode = "register" }) {
       console.error("Provider registration error:", error);
       setStatusMessage({
         type: "error",
-        text: error.message || "Registration failed. Please try again.",
+        text:
+          error.message ||
+          (isBn
+            ? "নিবন্ধন ব্যর্থ হয়েছে। পুনরায় চেষ্টা করুন।"
+            : "Registration failed. Please try again."),
       });
     } finally {
       setLoading(false);
@@ -427,10 +442,14 @@ export default function AuthScreen({ initialMode = "register" }) {
     e.preventDefault();
     setStatusMessage(null);
 
-    if (!loginData.username.trim()) {
+    const usernameClean = loginData.username.trim().replace(/[\s-]/g, "");
+
+    if (!usernameClean) {
       setStatusMessage({
         type: "error",
-        text: t.login?.errors?.phoneRequired || "Please enter your phone number.",
+        text:
+          t.login?.errors?.phoneRequired ||
+          (isBn ? "অনুগ্রহ করে আপনার ফোন নম্বর লিখুন।" : "Please enter your mobile phone number."),
       });
       return;
     }
@@ -438,7 +457,9 @@ export default function AuthScreen({ initialMode = "register" }) {
     if (!loginData.password) {
       setStatusMessage({
         type: "error",
-        text: t.login?.errors?.passwordRequired || "Please enter your password.",
+        text:
+          t.login?.errors?.passwordRequired ||
+          (isBn ? "অনুগ্রহ করে আপনার পাসওয়ার্ড লিখুন।" : "Please enter your password."),
       });
       return;
     }
@@ -447,7 +468,7 @@ export default function AuthScreen({ initialMode = "register" }) {
 
     try {
       const response = await loginUser({
-        username: loginData.username,
+        username: usernameClean,
         password: loginData.password,
       });
 
@@ -455,7 +476,11 @@ export default function AuthScreen({ initialMode = "register" }) {
 
       setStatusMessage({
         type: "success",
-        text: t.login?.successMessage || "Login successful! Redirecting...",
+        text:
+          t.login?.successMessage ||
+          (isBn
+            ? "লগইন সফল হয়েছে! ড্যাশবোর্ডে নিয়ে যাওয়া হচ্ছে..."
+            : "Login successful! Redirecting..."),
       });
 
       setTimeout(() => {
@@ -465,14 +490,18 @@ export default function AuthScreen({ initialMode = "register" }) {
       console.error("Login error:", error);
       setStatusMessage({
         type: "error",
-        text: error.message || "Invalid login credentials.",
+        text:
+          error.message ||
+          (isBn
+            ? "ভুল ফোন নম্বর বা পাসওয়ার্ড।"
+            : "Invalid phone number or password."),
       });
     } finally {
       setLoading(false);
     }
   };
 
-  // Fill Seed Demo Account
+  // Quick Demo Account autofill
   const fillDemoAccount = () => {
     setLoginData({
       username: "01800000001",
@@ -482,14 +511,19 @@ export default function AuthScreen({ initialMode = "register" }) {
     setStatusMessage(null);
   };
 
+  // Progress Bar percentage for Radius Slider (1 to 5 km -> 0% to 100%)
+  const radiusProgressPct = Math.round(
+    ((regData.working_radius_km - 1) / (5 - 1)) * 100
+  );
+
   return (
-    <div className="flex min-h-[calc(100vh-65px)] items-center justify-center p-3 sm:p-6 lg:p-8">
-      {/* Outer Shell Card */}
-      <div className="w-full max-w-5xl overflow-hidden rounded-3xl border border-slate-200/90 bg-white shadow-2xl shadow-slate-300/40 grid grid-cols-1 lg:grid-cols-12 min-h-[640px]">
+    <div className="py-6 sm:py-10 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto flex items-center justify-center">
+      {/* Enterprise Shell Card */}
+      <div className="w-full max-w-5xl rounded-3xl border border-slate-200/90 bg-white shadow-xl shadow-slate-200/50 overflow-hidden grid grid-cols-1 lg:grid-cols-12">
         {/* ============================================================== */}
-        {/* LEFT COLUMN: HERO & TRUST BRANDING                             */}
+        {/* LEFT BRAND HERO COLUMN                                          */}
         {/* ============================================================== */}
-        <section className="relative flex flex-col justify-between overflow-hidden bg-gradient-to-br from-[#00382E] via-[#005448] to-[#00695C] p-6 sm:p-9 text-white lg:col-span-5">
+        <section className="relative flex flex-col justify-between overflow-hidden bg-gradient-to-br from-[#00382E] via-[#004D40] to-[#00695C] p-6 sm:p-8 text-white lg:col-span-5">
           <div className="absolute -top-24 -left-24 h-64 w-64 rounded-full bg-emerald-400/15 blur-3xl pointer-events-none" />
           <div className="absolute -bottom-24 -right-24 h-72 w-72 rounded-full bg-teal-300/15 blur-3xl pointer-events-none" />
 
@@ -502,108 +536,97 @@ export default function AuthScreen({ initialMode = "register" }) {
           />
 
           <div className="relative z-10">
-            <div className="inline-flex items-center gap-2 rounded-xl bg-white/10 px-3 py-1.5 backdrop-blur-md border border-white/15 text-xs font-semibold tracking-wide text-emerald-100 shadow-sm">
+            <div className="inline-flex items-center gap-2 rounded-xl bg-white/10 px-3.5 py-1.5 backdrop-blur-md border border-white/15 text-xs font-semibold tracking-wide text-emerald-100 shadow-xs">
               <ShieldCheck size={16} className="text-emerald-300" />
-              <span>{t.hero?.badge || "Nirbhor Trust Portal"}</span>
+              <span>{t.hero?.badge || (isBn ? "নির্ভর ট্রাস্ট পোর্টাল • বিশ্বস্ত প্ল্যাটফর্ম" : "Nirbhor Trust Portal • Reliable Service Network")}</span>
             </div>
 
             <h1 className="mt-6 text-2xl sm:text-3xl font-extrabold tracking-tight leading-tight">
-              {t.hero?.title || "Join the Trusted Skill Network."}
+              {t.hero?.title || (isBn ? "বিশ্বস্ত দক্ষতার নেটওয়ার্কে যোগ দিন" : "Join the Trusted Skill Network")}
             </h1>
 
-            <p className="mt-3.5 text-xs sm:text-sm text-emerald-50/90 leading-relaxed font-normal">
+            <p className="mt-3.5 text-sm text-emerald-50/90 leading-relaxed font-normal">
               {t.hero?.desc ||
-                "Connect with thousands of local opportunities and build your verified reputation within our community."}
+                (isBn
+                  ? "হাজারো স্থানীয় কাজের সাথে যুক্ত হোন এবং আপনার এলাকায় নিজের ভেরিফাইড পরিচিতি ও সুনাম গড়ে তুলুন।"
+                  : "Connect with thousands of local opportunities and build your verified reputation within our community.")}
             </p>
 
-            <div className="mt-6 space-y-2.5 pt-4 border-t border-white/10 text-xs">
-              <div className="flex items-center gap-2.5 text-emerald-100">
-                <div className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-emerald-400/20 text-emerald-300">
-                  <Check size={12} strokeWidth={2.5} />
+            <div className="mt-8 space-y-3.5 pt-6 border-t border-white/15 text-xs sm:text-sm">
+              <div className="flex items-center gap-3 text-emerald-50">
+                <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-emerald-400/20 text-emerald-300">
+                  <Check size={14} strokeWidth={2.5} />
                 </div>
-                <span>{t.hero?.perk1 || "100% Verified Identity & Trust Score"}</span>
+                <span className="font-medium">
+                  {t.hero?.perk1 || (isBn ? "১০০% যাচাইকৃত পরিচয় ও ট্রাস্ট স্কোর" : "100% Verified Identity & Trust Score")}
+                </span>
               </div>
-              <div className="flex items-center gap-2.5 text-emerald-100">
-                <div className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-emerald-400/20 text-emerald-300">
-                  <Check size={12} strokeWidth={2.5} />
+              <div className="flex items-center gap-3 text-emerald-50">
+                <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-emerald-400/20 text-emerald-300">
+                  <Check size={14} strokeWidth={2.5} />
                 </div>
-                <span>{t.hero?.perk2 || "Guaranteed local leads matched to your radius"}</span>
+                <span className="font-medium">
+                  {t.hero?.perk2 || (isBn ? "আপনার নির্ধারিত পরিধির মধ্যে কাজের নিশ্চিত নোটিফিকেশন" : "Guaranteed local leads matched to your radius")}
+                </span>
               </div>
-              <div className="flex items-center gap-2.5 text-emerald-100">
-                <div className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-emerald-400/20 text-emerald-300">
-                  <Check size={12} strokeWidth={2.5} />
+              <div className="flex items-center gap-3 text-emerald-50">
+                <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-emerald-400/20 text-emerald-300">
+                  <Check size={14} strokeWidth={2.5} />
                 </div>
-                <span>{t.hero?.perk3 || "Fast payouts via bKash, Nagad & Bank"}</span>
+                <span className="font-medium">
+                  {t.hero?.perk3 || (isBn ? "বিকাশ, নগদ ও ব্যাংকের মাধ্যমে দ্রুত পেমেন্ট উত্তোলন" : "Fast payouts via bKash, Nagad & Bank")}
+                </span>
               </div>
             </div>
           </div>
 
-          <div className="relative z-10 mt-8 grid grid-cols-2 gap-3">
-            <div className="rounded-2xl border border-white/15 bg-white/10 p-3.5 backdrop-blur-md transition-all hover:bg-white/15">
-              <div className="flex items-center gap-2 text-emerald-200">
-                <Users size={18} />
-                <span className="text-xl font-black text-white">
-                  {t.hero?.stat1Number || "50k+"}
+          <div className="relative z-10 mt-6 grid grid-cols-2 gap-2.5">
+            <div className="rounded-xl border border-white/15 bg-white/10 p-2.5 sm:p-3 backdrop-blur-md transition-all hover:bg-white/15">
+              <div className="flex items-center gap-1.5 text-emerald-200">
+                <Users size={16} />
+                <span className="text-sm sm:text-base font-extrabold text-white">
+                  {t.hero?.stat1Number || (isBn ? "সরাসরি কাজ" : "Direct Work")}
                 </span>
               </div>
-              <p className="mt-1 text-xs font-semibold text-emerald-100 leading-tight">
-                {t.hero?.stat1Label || "Active Providers"}
+              <p className="mt-0.5 text-[11px] font-medium text-emerald-100/90 leading-tight">
+                {t.hero?.stat1Label || (isBn ? "মধ্যস্বত্বভোগী ছাড়া" : "Zero Middlemen")}
               </p>
             </div>
 
-            <div className="rounded-2xl border border-white/15 bg-white/10 p-3.5 backdrop-blur-md transition-all hover:bg-white/15">
-              <div className="flex items-center gap-2 text-emerald-200">
-                <Award size={18} />
-                <span className="text-xl font-black text-white">
-                  {t.hero?.stat2Number || "Verified"}
+            <div className="rounded-xl border border-white/15 bg-white/10 p-2.5 sm:p-3 backdrop-blur-md transition-all hover:bg-white/15">
+              <div className="flex items-center gap-1.5 text-emerald-200">
+                <ShieldCheck size={16} />
+                <span className="text-sm sm:text-base font-extrabold text-white">
+                  {t.hero?.stat2Number || (isBn ? "যাচাইকৃত" : "Verified")}
                 </span>
               </div>
-              <p className="mt-1 text-xs font-semibold text-emerald-100 leading-tight">
-                {t.hero?.stat2Label || "Trust Portal"}
+              <p className="mt-0.5 text-[11px] font-medium text-emerald-100/90 leading-tight">
+                {t.hero?.stat2Label || (isBn ? "ট্রাস্ট পোর্টাল" : "Trust Portal")}
               </p>
             </div>
           </div>
         </section>
 
         {/* ============================================================== */}
-        {/* RIGHT COLUMN: AUTH FORM                                        */}
+        {/* RIGHT AUTH FORM COLUMN                                         */}
         {/* ============================================================== */}
-        <section className="flex flex-col justify-between p-5 sm:p-8 lg:p-9 lg:col-span-7 bg-white max-h-[92vh] overflow-y-auto">
+        <section className="p-6 sm:p-8 lg:p-9 lg:col-span-7 bg-white">
           <div className="mx-auto w-full max-w-lg">
-            {/* Top Language Toggle Prompt */}
-            <div className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-gradient-to-r from-emerald-50/80 via-teal-50/50 to-slate-50 p-2.5 sm:p-3 border border-emerald-100/90 shadow-xs">
-              <div className="flex items-center gap-2">
-                <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-[#00695C]/10 text-[#00695C]">
-                  <Globe size={15} />
-                </div>
-                <div>
-                  <p className="text-xs font-bold text-slate-800 leading-none">
-                    {t.auth?.langChangePrompt || "Language / ভাষা:"}
-                  </p>
-                  <p className="text-[10px] text-slate-500 mt-0.5">
-                    {language === "bn" ? "বাংলা সক্রিয় (Bangla Active)" : "English Active"}
-                  </p>
-                </div>
-              </div>
-
-              <LanguageToggle />
-            </div>
-
             {/* Mode Switcher Tabs */}
-            <div className="mb-6 flex rounded-2xl bg-slate-100/90 p-1 border border-slate-200/80 shadow-inner">
+            <div className="mb-6 flex rounded-2xl bg-slate-100 p-1.5 border border-slate-200/90 shadow-inner">
               <button
                 type="button"
                 onClick={() => {
                   setMode("register");
                   setStatusMessage(null);
                 }}
-                className={`flex-1 rounded-xl py-2 text-xs sm:text-sm font-bold transition-all cursor-pointer ${
+                className={`flex-1 rounded-xl py-2.5 text-xs sm:text-sm font-bold transition-all cursor-pointer ${
                   mode === "register"
                     ? "bg-[#00695C] text-white shadow-sm"
                     : "text-slate-600 hover:text-slate-900"
                 }`}
               >
-                {t.auth?.tabRegister || "Create Account"}
+                {t.auth?.tabRegister || (isBn ? "নিবন্ধন করুন" : "Create Account")}
               </button>
               <button
                 type="button"
@@ -611,774 +634,992 @@ export default function AuthScreen({ initialMode = "register" }) {
                   setMode("login");
                   setStatusMessage(null);
                 }}
-                className={`flex-1 rounded-xl py-2 text-xs sm:text-sm font-bold transition-all cursor-pointer ${
+                className={`flex-1 rounded-xl py-2.5 text-xs sm:text-sm font-bold transition-all cursor-pointer ${
                   mode === "login"
                     ? "bg-[#00695C] text-white shadow-sm"
                     : "text-slate-600 hover:text-slate-900"
                 }`}
               >
-                {t.auth?.tabLogin || "Log In"}
+                {t.auth?.tabLogin || (isBn ? "লগইন করুন" : "Log In")}
               </button>
             </div>
 
             {/* Status Feedback Message */}
             {statusMessage && (
               <div
-                className={`mb-5 flex items-start gap-2.5 rounded-xl p-3.5 text-xs font-semibold border transition-all animate-in fade-in slide-in-from-top-2 ${
+                className={`mb-6 flex items-start gap-3 rounded-2xl p-4 text-xs sm:text-sm font-medium border transition-all animate-in fade-in slide-in-from-top-2 ${
                   statusMessage.type === "success"
-                    ? "bg-emerald-50 text-emerald-800 border-emerald-300"
-                    : "bg-rose-50 text-rose-800 border-rose-300"
+                    ? "bg-emerald-50 text-emerald-900 border-emerald-300"
+                    : "bg-rose-50 text-rose-900 border-rose-300"
                 }`}
               >
                 {statusMessage.type === "success" ? (
-                  <CheckCircle2 size={17} className="text-emerald-600 shrink-0 mt-0.5" />
+                  <CheckCircle2 size={18} className="text-emerald-600 shrink-0 mt-0.5" />
                 ) : (
-                  <AlertCircle size={17} className="text-rose-600 shrink-0 mt-0.5" />
+                  <AlertCircle size={18} className="text-rose-600 shrink-0 mt-0.5" />
                 )}
                 <span className="leading-snug">{statusMessage.text}</span>
               </div>
             )}
 
             {/* ========================================================== */}
-            {/* REGISTER MODE FORM                                         */}
+            {/* REGISTER 3-STEP WIZARD                                     */}
             {/* ========================================================== */}
             {mode === "register" ? (
               <div>
-                <div className="mb-5">
-                  <div className="flex items-center gap-2">
-                    <span className="rounded-md bg-emerald-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-emerald-800">
-                      POST /api/v1/auth/register/provider
-                    </span>
+                {/* 3-Step Clean Stepper Header */}
+                <div className="mb-6">
+                  <div className="flex items-center justify-between gap-2 mb-4">
+                    {/* Step 1 Chip */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setRegisterStep(1);
+                        setStatusMessage(null);
+                      }}
+                      className={`flex items-center gap-2 cursor-pointer transition-colors ${
+                        registerStep === 1
+                          ? "text-[#00695C] font-extrabold"
+                          : registerStep > 1
+                          ? "text-emerald-700 font-bold"
+                          : "text-slate-400 font-semibold"
+                      }`}
+                    >
+                      <span
+                        className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold transition-all ${
+                          registerStep === 1
+                            ? "bg-[#00695C] text-white shadow-xs"
+                            : registerStep > 1
+                            ? "bg-emerald-100 text-[#00695C]"
+                            : "bg-slate-100 text-slate-400"
+                        }`}
+                      >
+                        {registerStep > 1 ? <Check size={14} strokeWidth={3} /> : "1"}
+                      </span>
+                      <span className="text-xs sm:text-sm hidden sm:inline">
+                        {t.register?.step1Chip || (isBn ? "ব্যক্তিগত তথ্য" : "Personal Info")}
+                      </span>
+                    </button>
+
+                    <div
+                      className={`flex-1 h-0.5 mx-1 transition-colors ${
+                        registerStep >= 2 ? "bg-emerald-300" : "bg-slate-200"
+                      }`}
+                    />
+
+                    {/* Step 2 Chip */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (
+                          regData.name_en &&
+                          regData.name_bn &&
+                          regData.phone &&
+                          regData.password.length >= 8
+                        ) {
+                          setRegisterStep(2);
+                          setStatusMessage(null);
+                        }
+                      }}
+                      className={`flex items-center gap-2 transition-colors ${
+                        registerStep === 2
+                          ? "text-[#00695C] font-extrabold cursor-pointer"
+                          : registerStep > 2
+                          ? "text-emerald-700 font-bold cursor-pointer"
+                          : "text-slate-400 font-semibold"
+                      }`}
+                    >
+                      <span
+                        className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold transition-all ${
+                          registerStep === 2
+                            ? "bg-[#00695C] text-white shadow-xs"
+                            : registerStep > 2
+                            ? "bg-emerald-100 text-[#00695C]"
+                            : "bg-slate-100 text-slate-400"
+                        }`}
+                      >
+                        {registerStep > 2 ? <Check size={14} strokeWidth={3} /> : "2"}
+                      </span>
+                      <span className="text-xs sm:text-sm hidden sm:inline">
+                        {t.register?.step2Chip || (isBn ? "দক্ষতা ও ক্ষেত্র" : "Skills & Services")}
+                      </span>
+                    </button>
+
+                    <div
+                      className={`flex-1 h-0.5 mx-1 transition-colors ${
+                        registerStep === 3 ? "bg-emerald-300" : "bg-slate-200"
+                      }`}
+                    />
+
+                    {/* Step 3 Chip */}
+                    <div
+                      className={`flex items-center gap-2 ${
+                        registerStep === 3
+                          ? "text-[#00695C] font-extrabold"
+                          : "text-slate-400 font-semibold"
+                      }`}
+                    >
+                      <span
+                        className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold ${
+                          registerStep === 3
+                            ? "bg-[#00695C] text-white shadow-xs"
+                            : "bg-slate-100 text-slate-400"
+                        }`}
+                      >
+                        3
+                      </span>
+                      <span className="text-xs sm:text-sm hidden sm:inline">
+                        {t.register?.step3Chip || (isBn ? "অবস্থান ও পরিধি" : "Location & Radius")}
+                      </span>
+                    </div>
                   </div>
-                  <h2 className="text-2xl font-black tracking-tight text-slate-900 mt-1">
-                    {t.auth?.registerTitle || "Provider Registration"}
+
+                  {/* Step Heading & Subtitle */}
+                  <h2 className="text-2xl font-black tracking-tight text-slate-900">
+                    {registerStep === 1
+                      ? t.register?.step1Title || (isBn ? "ব্যক্তিগত তথ্য" : "Personal Information")
+                      : registerStep === 2
+                      ? t.register?.step2Title || (isBn ? "কাজের দক্ষতা ও ক্ষেত্র" : "Skills & Specialization")
+                      : t.register?.step3Title || (isBn ? "অবস্থান ও কাজের পরিধি" : "Service Location & Radius")}
                   </h2>
-                  <p className="mt-1 text-xs text-slate-500 font-medium">
-                    {t.auth?.registerSubtitle ||
-                      "Join as a verified service provider in your area."}
+                  <p className="mt-1 text-xs sm:text-sm text-slate-500 font-medium">
+                    {registerStep === 1
+                      ? t.register?.step1Subtitle || (isBn ? "আপনার সঠিক নাম ও যোগাযোগ নম্বর দিয়ে অ্যাকাউন্ট শুরু করুন।" : "Enter your full name and contact number to start.")
+                      : registerStep === 2
+                      ? t.register?.step2Subtitle || (isBn ? "ক্যাটাগরি নির্বাচন করে আপনার কাজের দক্ষতাসমূহ যুক্ত করুন।" : "Select categories and choose the service skills you provide.")
+                      : t.register?.step3Subtitle || (isBn ? "ম্যাপে কর্মস্থল পিন করুন এবং সেবার দূরত্ব নির্ধারণ করুন।" : "Pin your base address on Google Maps and set your coverage radius.")}
                   </p>
                 </div>
 
-                <form onSubmit={handleRegisterSubmit} className="space-y-4">
-                  {/* Row 1: English & Bangla Full Names */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <div>
-                      <label className="block text-xs font-bold text-slate-700 mb-1">
-                        {t.register?.nameEnLabel || "Full Name (English)"}
-                        <span className="text-rose-500 ml-0.5">*</span>
-                      </label>
-                      <div className="relative">
-                        <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-slate-400">
-                          <User size={15} />
+                {/* ────────────────────────────────────────────────────────── */}
+                {/* STEP 1: PERSONAL & ACCOUNT INFO                           */}
+                {/* ────────────────────────────────────────────────────────── */}
+                {registerStep === 1 && (
+                  <form onSubmit={handleProceedToStep2} autoComplete="off" className="space-y-4">
+                    <div className="rounded-2xl border border-slate-200/90 bg-slate-50/50 p-4 sm:p-5 space-y-4">
+                      {/* Name EN & Name BN */}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                        <div>
+                          <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                            {t.register?.nameEnLabel || (isBn ? "পূর্ণ নাম (ইংরেজি বানান)" : "Full Name (English)")}
+                            <span className="text-rose-500 ml-0.5">*</span>
+                          </label>
+                          <div className="relative">
+                            <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3.5 text-slate-400">
+                              <User size={16} />
+                            </div>
+                            <input
+                              type="text"
+                              required
+                              autoComplete="off"
+                              value={regData.name_en}
+                              onChange={(e) =>
+                                setRegData({ ...regData, name_en: e.target.value })
+                              }
+                              placeholder={
+                                t.register?.nameEnPlaceholder || "e.g. Abdur Rahim"
+                              }
+                              className="w-full rounded-xl border border-slate-300 bg-white pl-10 pr-3.5 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:border-[#00695C] focus:outline-none focus:ring-2 focus:ring-[#00695C]/20 transition-all font-medium"
+                            />
+                          </div>
                         </div>
-                        <input
-                          type="text"
-                          required
-                          value={regData.name_en}
-                          onChange={(e) =>
-                            setRegData({ ...regData, name_en: e.target.value })
-                          }
-                          placeholder={t.register?.nameEnPlaceholder || "e.g. Rahim Ahmed"}
-                          className="w-full rounded-xl border border-slate-300 bg-slate-50/50 pl-9 pr-3 py-2 text-xs sm:text-sm text-slate-900 placeholder:text-slate-400 focus:border-[#00695C] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#00695C]/20 transition-all"
-                        />
+
+                        <div>
+                          <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                            {t.register?.nameBnLabel || (isBn ? "পূর্ণ নাম (বাংলা)" : "Full Name (Bangla)")}
+                            <span className="text-rose-500 ml-0.5">*</span>
+                          </label>
+                          <div className="relative">
+                            <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3.5 text-slate-400">
+                              <User size={16} />
+                            </div>
+                            <input
+                              type="text"
+                              required
+                              autoComplete="off"
+                              value={regData.name_bn}
+                              onChange={(e) =>
+                                setRegData({ ...regData, name_bn: e.target.value })
+                              }
+                              placeholder={
+                                t.register?.nameBnPlaceholder || "যেমন: আব্দুর রহিম"
+                              }
+                              className="w-full rounded-xl border border-slate-300 bg-white pl-10 pr-3.5 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:border-[#00695C] focus:outline-none focus:ring-2 focus:ring-[#00695C]/20 transition-all font-medium"
+                            />
+                          </div>
+                        </div>
                       </div>
-                      <p className="text-[10px] text-slate-400 mt-1">
-                        {t.register?.nameEnHint || "English letters"}
-                      </p>
+
+                      {/* Phone & Password */}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                        <div>
+                          <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                            {t.register?.phoneLabel || (isBn ? "মোবাইল ফোন নম্বর" : "Mobile Phone Number")}
+                            <span className="text-rose-500 ml-0.5">*</span>
+                          </label>
+                          <div className="relative">
+                            <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3.5 text-slate-400">
+                              <Phone size={16} />
+                            </div>
+                            <input
+                              type="tel"
+                              required
+                              autoComplete="off"
+                              value={regData.phone}
+                              onChange={(e) =>
+                                setRegData({ ...regData, phone: e.target.value })
+                              }
+                              placeholder={
+                                t.register?.phonePlaceholder ||
+                                (isBn ? "০১৭XXXXXXXX" : "017XXXXXXXX")
+                              }
+                              maxLength={11}
+                              className="w-full rounded-xl border border-slate-300 bg-white pl-10 pr-3.5 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:border-[#00695C] focus:outline-none focus:ring-2 focus:ring-[#00695C]/20 transition-all font-mono font-medium"
+                            />
+                          </div>
+                        </div>
+
+                        <div>
+                          <div className="flex items-center justify-between mb-1.5">
+                            <label className="block text-xs font-bold text-slate-700">
+                              {t.register?.passwordLabel || (isBn ? "পাসওয়ার্ড" : "Password")}
+                              <span className="text-rose-500 ml-0.5">*</span>
+                            </label>
+                            {regData.password && (
+                              <span className="text-[11px] font-bold text-slate-600">
+                                {strength.label}
+                              </span>
+                            )}
+                          </div>
+                          <div className="relative">
+                            <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3.5 text-slate-400">
+                              <Lock size={16} />
+                            </div>
+                            <input
+                              type={showPassword ? "text" : "password"}
+                              required
+                              autoComplete="new-password"
+                              value={regData.password}
+                              onChange={(e) =>
+                                setRegData({ ...regData, password: e.target.value })
+                              }
+                              placeholder={
+                                t.register?.passwordPlaceholder ||
+                                (isBn ? "কমপক্ষে ৮টি অক্ষর" : "At least 8 characters")
+                              }
+                              className="w-full rounded-xl border border-slate-300 bg-white pl-10 pr-10 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:border-[#00695C] focus:outline-none focus:ring-2 focus:ring-[#00695C]/20 transition-all font-mono font-medium"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => setShowPassword(!showPassword)}
+                              className="absolute inset-y-0 right-0 flex items-center pr-3.5 text-slate-400 hover:text-slate-600 cursor-pointer"
+                            >
+                              {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Preferred Language & Smartphone Question */}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 pt-1">
+                        <div>
+                          <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                            {t.register?.preferredLangLabel || (isBn ? "যোগাযোগের পছন্দের ভাষা" : "Preferred Communication Language")}
+                            <span className="text-rose-500 ml-0.5">*</span>
+                          </label>
+                          <select
+                            value={regData.preferred_lang}
+                            onChange={(e) =>
+                              setRegData({ ...regData, preferred_lang: e.target.value })
+                            }
+                            className="w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-sm text-slate-900 focus:border-[#00695C] focus:outline-none focus:ring-2 focus:ring-[#00695C]/20 transition-all cursor-pointer font-medium"
+                          >
+                            <option value="bn">{isBn ? "বাংলা" : "Bangla"}</option>
+                            <option value="en">{isBn ? "ইংরেজি" : "English"}</option>
+                          </select>
+                        </div>
+
+                        <div>
+                          <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                            {t.register?.smartphoneQuestion || (isBn ? "স্মার্টফোন আছে কি?" : "Do you have a smartphone?")}
+                          </label>
+                          <div className="flex rounded-xl bg-slate-200/80 p-1 border border-slate-300">
+                            <button
+                              type="button"
+                              onClick={() => setRegData({ ...regData, has_smartphone: true })}
+                              className={`flex-1 rounded-lg py-2 text-xs sm:text-sm font-bold transition-all cursor-pointer ${
+                                regData.has_smartphone
+                                  ? "bg-[#00695C] text-white shadow-xs"
+                                  : "text-slate-600 hover:text-slate-900"
+                              }`}
+                            >
+                              {t.register?.smartphoneYes || (isBn ? "হ্যাঁ" : "Yes")}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setRegData({ ...regData, has_smartphone: false })}
+                              className={`flex-1 rounded-lg py-2 text-xs sm:text-sm font-bold transition-all cursor-pointer ${
+                                !regData.has_smartphone
+                                  ? "bg-[#00695C] text-white shadow-xs"
+                                  : "text-slate-600 hover:text-slate-900"
+                              }`}
+                            >
+                              {t.register?.smartphoneNo || (isBn ? "না" : "No")}
+                            </button>
+                          </div>
+                        </div>
+                      </div>
                     </div>
 
-                    <div>
-                      <label className="block text-xs font-bold text-slate-700 mb-1">
-                        {t.register?.nameBnLabel || "Full Name (Bangla)"}
-                        <span className="text-rose-500 ml-0.5">*</span>
-                      </label>
-                      <div className="relative">
-                        <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-slate-400">
-                          <User size={15} />
-                        </div>
-                        <input
-                          type="text"
-                          required
-                          value={regData.name_bn}
-                          onChange={(e) =>
-                            setRegData({ ...regData, name_bn: e.target.value })
-                          }
-                          placeholder={t.register?.nameBnPlaceholder || "যেমন: রহিম আহমেদ"}
-                          className="w-full rounded-xl border border-slate-300 bg-slate-50/50 pl-9 pr-3 py-2 text-xs sm:text-sm text-slate-900 placeholder:text-slate-400 focus:border-[#00695C] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#00695C]/20 transition-all"
-                        />
-                      </div>
-                      <p className="text-[10px] text-slate-400 mt-1">
-                        {t.register?.nameBnHint || "বাংলা বানান"}
-                      </p>
+                    {/* Step 1 Continue Button */}
+                    <div className="pt-2">
+                      <button
+                        type="submit"
+                        className="w-full flex items-center justify-center gap-2 rounded-2xl bg-[#00695C] hover:bg-[#00574C] py-3.5 px-6 text-sm sm:text-base font-bold text-white shadow-lg shadow-[#00695C]/25 transition-all active:scale-[0.99] cursor-pointer"
+                      >
+                        <span>{t.register?.continueBtn || (isBn ? "পরবর্তী ধাপ" : "Continue")}</span>
+                        <ArrowRight size={18} />
+                      </button>
                     </div>
-                  </div>
+                  </form>
+                )}
 
-                  {/* Row 2: Phone & Password */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <div>
-                      <label className="block text-xs font-bold text-slate-700 mb-1">
-                        {t.register?.phoneLabel || "Mobile Number"}
-                        <span className="text-rose-500 ml-0.5">*</span>
-                      </label>
-                      <div className="relative">
-                        <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-slate-400">
-                          <Phone size={15} />
+                {/* ────────────────────────────────────────────────────────── */}
+                {/* STEP 2: SKILLS & CATEGORY SELECTION                        */}
+                {/* ────────────────────────────────────────────────────────── */}
+                {registerStep === 2 && (
+                  <form onSubmit={handleProceedToStep3} className="space-y-4 animate-in fade-in slide-in-from-right-4 duration-200">
+                    <div className="rounded-2xl border border-slate-200/90 bg-slate-50/50 p-4 sm:p-5 space-y-3.5">
+                      <div className="flex items-center justify-between border-b border-slate-200/80 pb-2.5">
+                        <div className="flex items-center gap-2">
+                          <Wrench size={16} className="text-[#00695C]" />
+                          <h3 className="text-xs sm:text-sm font-bold uppercase tracking-wider text-slate-800">
+                            {t.register?.skillsSectionTitle || (isBn ? "কাজের দক্ষতা ও ক্ষেত্র" : "Skills & Specialization")}
+                          </h3>
+                          <span className="text-rose-500 font-bold">*</span>
                         </div>
-                        <input
-                          type="tel"
-                          required
-                          value={regData.phone}
-                          onChange={(e) =>
-                            setRegData({ ...regData, phone: e.target.value })
-                          }
-                          placeholder={t.register?.phonePlaceholder || "01712345678"}
-                          maxLength={11}
-                          className="w-full rounded-xl border border-slate-300 bg-slate-50/50 pl-9 pr-3 py-2 text-xs sm:text-sm text-slate-900 placeholder:text-slate-400 focus:border-[#00695C] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#00695C]/20 transition-all font-mono"
-                        />
-                      </div>
-                      <p className="text-[10px] text-slate-400 mt-1">
-                        {t.register?.phoneHint || "11 digits starting with 01"}
-                      </p>
-                    </div>
-
-                    <div>
-                      <div className="flex items-center justify-between mb-1">
-                        <label className="block text-xs font-bold text-slate-700">
-                          {t.register?.passwordLabel || "Password"}
-                          <span className="text-rose-500 ml-0.5">*</span>
-                        </label>
-                        {regData.password && (
-                          <span className="text-[10px] font-bold text-slate-500">
-                            {strength.label}
+                        {regData.skill_ids.length > 0 ? (
+                          <span className="rounded-full bg-emerald-100 px-3 py-0.5 text-xs font-bold text-emerald-800 border border-emerald-200">
+                            {regData.skill_ids.length} {t.register?.skillsSelectedCount || (isBn ? "টি নির্বাচিত" : "selected")}
+                          </span>
+                        ) : (
+                          <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-semibold text-slate-500 border border-slate-200">
+                            {isBn ? "কোনোটি নির্বাচিত নয়" : "None selected"}
                           </span>
                         )}
                       </div>
-                      <div className="relative">
-                        <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-slate-400">
-                          <Lock size={15} />
-                        </div>
-                        <input
-                          type={showPassword ? "text" : "password"}
-                          required
-                          value={regData.password}
-                          onChange={(e) =>
-                            setRegData({ ...regData, password: e.target.value })
-                          }
-                          placeholder={t.register?.passwordPlaceholder || "Min 8 characters"}
-                          className="w-full rounded-xl border border-slate-300 bg-slate-50/50 pl-9 pr-10 py-2 text-xs sm:text-sm text-slate-900 placeholder:text-slate-400 focus:border-[#00695C] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#00695C]/20 transition-all font-mono"
-                        />
-                        <button
-                          type="button"
-                          onClick={() => setShowPassword(!showPassword)}
-                          className="absolute inset-y-0 right-0 flex items-center pr-3 text-slate-400 hover:text-slate-600 cursor-pointer"
-                        >
-                          {showPassword ? <EyeOff size={15} /> : <Eye size={15} />}
-                        </button>
-                      </div>
 
-                      {regData.password && (
-                        <div className="mt-1 flex gap-1">
-                          <div
-                            className={`h-1 flex-1 rounded-full ${
-                              strength.score >= 1 ? strength.color : "bg-slate-200"
-                            }`}
-                          />
-                          <div
-                            className={`h-1 flex-1 rounded-full ${
-                              strength.score >= 2 ? strength.color : "bg-slate-200"
-                            }`}
-                          />
-                          <div
-                            className={`h-1 flex-1 rounded-full ${
-                              strength.score >= 3 ? strength.color : "bg-slate-200"
-                            }`}
-                          />
-                        </div>
-                      )}
-                    </div>
-                  </div>
+                      <p className="text-xs text-slate-500 font-medium">
+                        {t.register?.categoriesSubtitle ||
+                          (isBn
+                            ? "ক্যাটাগরিতে ক্লিক করলে তার ভেতরের দক্ষতা নিচে খুলবে (প্রতি সারিতে ২টি):"
+                            : "Click a category to select skills below (2 per row):")}
+                      </p>
 
-                  {/* Row 3: Preferred Language & Smartphone Toggle */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
-                    <div>
-                      <label className="block text-xs font-bold text-slate-700 mb-1">
-                        {t.register?.preferredLangLabel || "Preferred Language"}
-                        <span className="text-rose-500 ml-0.5">*</span>
-                      </label>
-                      <select
-                        value={regData.preferred_lang}
-                        onChange={(e) =>
-                          setRegData({ ...regData, preferred_lang: e.target.value })
-                        }
-                        className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs sm:text-sm text-slate-900 focus:border-[#00695C] focus:outline-none focus:ring-2 focus:ring-[#00695C]/20 transition-all cursor-pointer font-medium"
-                      >
-                        <option value="bn">বাংলা (Bangla)</option>
-                        <option value="en">English (ইংরেজি)</option>
-                      </select>
-                    </div>
-
-                    <div>
-                      <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center gap-1.5">
-                        <Smartphone size={14} className="text-[#00695C]" />
-                        <span>{t.register?.smartphoneQuestion || "Has Smartphone?"}</span>
-                      </label>
-                      <div className="flex rounded-xl bg-slate-100 p-1 border border-slate-200">
-                        <button
-                          type="button"
-                          onClick={() => setRegData({ ...regData, has_smartphone: true })}
-                          className={`flex-1 rounded-lg py-1.5 text-xs font-bold transition-all cursor-pointer ${
-                            regData.has_smartphone
-                              ? "bg-[#00695C] text-white shadow-xs"
-                              : "text-slate-600 hover:text-slate-900"
-                          }`}
-                        >
-                          {t.register?.smartphoneYes || "Yes / আছে"}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setRegData({ ...regData, has_smartphone: false })}
-                          className={`flex-1 rounded-lg py-1.5 text-xs font-bold transition-all cursor-pointer ${
-                            !regData.has_smartphone
-                              ? "bg-slate-700 text-white shadow-xs"
-                              : "text-slate-600 hover:text-slate-900"
-                          }`}
-                        >
-                          {t.register?.smartphoneNo || "No / নেই"}
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* ======================================================== */}
-                  {/* HIERARCHICAL CATEGORY & SKILLS SECTION                    */}
-                  {/* Category List (2 per row) -> Click to open skills below  */}
-                  {/* ======================================================== */}
-                  <div className="pt-2 border-t border-slate-200 space-y-2.5">
-                    {/* Header */}
-                    <div className="flex items-center justify-between">
-                      <label className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
-                        <Wrench size={14} className="text-[#00695C]" />
-                        <span>{t.register?.skillsSectionTitle || "Skills & Specialization"}</span>
-                        <span className="text-rose-500">*</span>
-                      </label>
-                      <span className="rounded-full bg-emerald-100 px-2.5 py-0.5 text-[11px] font-bold text-emerald-800 border border-emerald-200">
-                        {regData.skill_ids.length} {t.register?.skillsSelectedCount || "selected"}
-                      </span>
-                    </div>
-
-                    <p className="text-[11px] text-slate-500">
-                      {t.register?.categoriesSubtitle ||
-                        "Click a category to open its skills below (2 per row)"}
-                    </p>
-
-                    {/* CATEGORY GRID: 2 Categories per row */}
-                    <div className="grid grid-cols-2 gap-2.5">
-                      {categories.map((cat) => {
-                        const isExpanded = expandedCategoryIds.includes(cat.id);
-                        const catSkills = categorySkills[cat.id] || [];
-                        const selectedCountInCat = catSkills.filter((s) =>
-                          regData.skill_ids.includes(s.id)
-                        ).length;
-
-                        return (
-                          <button
-                            key={cat.id}
-                            type="button"
-                            onClick={() => toggleCategory(cat.id)}
-                            className={`group relative flex items-center justify-between p-2.5 sm:p-3 rounded-2xl border text-left transition-all cursor-pointer ${
-                              isExpanded
-                                ? "border-[#00695C] bg-emerald-50/80 shadow-xs ring-2 ring-[#00695C]/20"
-                                : selectedCountInCat > 0
-                                ? "border-emerald-300 bg-white hover:border-emerald-500 shadow-xs"
-                                : "border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50/80 shadow-xs"
-                            }`}
-                          >
-                            <div className="flex items-center gap-2 min-w-0">
-                              <div
-                                className={`flex h-7 w-7 sm:h-8 sm:w-8 shrink-0 items-center justify-center rounded-xl transition-colors ${
-                                  isExpanded
-                                    ? "bg-[#00695C] text-white shadow-xs"
-                                    : selectedCountInCat > 0
-                                    ? "bg-emerald-100 text-[#00695C]"
-                                    : "bg-slate-100 text-slate-600 group-hover:bg-slate-200"
-                                }`}
-                              >
-                                {getCategoryIcon(cat.id, cat.name)}
-                              </div>
-
-                              <div className="min-w-0">
-                                <p
-                                  className={`text-xs font-bold truncate leading-tight ${
-                                    isExpanded ? "text-[#00695C]" : "text-slate-800"
-                                  }`}
-                                >
-                                  {cat.name}
-                                </p>
-                                {selectedCountInCat > 0 && (
-                                  <span className="inline-flex items-center gap-0.5 text-[10px] font-bold text-emerald-700 mt-0.5">
-                                    <Check size={10} strokeWidth={3} />
-                                    <span>
-                                      {selectedCountInCat}{" "}
-                                      {language === "bn" ? "টি" : "selected"}
-                                    </span>
-                                  </span>
-                                )}
-                              </div>
-                            </div>
-
-                            <div
-                              className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-slate-400 transition-transform ${
-                                isExpanded ? "rotate-180 text-[#00695C]" : ""
-                              }`}
-                            >
-                              <ChevronDown size={14} />
-                            </div>
-                          </button>
-                        );
-                      })}
-                    </div>
-
-                    {/* EXPANDED SKILLS BOXES: Opened underneath categories */}
-                    {expandedCategoryIds.length === 0 ? (
-                      <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50/70 p-3 text-center text-xs text-slate-500 font-medium">
-                        {t.register?.categoryHint ||
-                          "Click a category above to reveal and select specific skills"}
-                      </div>
-                    ) : (
-                      <div className="space-y-2.5 pt-1">
-                        {expandedCategoryIds.map((catId) => {
-                          const catObj = categories.find((c) => c.id === catId);
-                          const catName = catObj ? catObj.name : `Category ${catId}`;
-                          const skills = categorySkills[catId] || [];
-                          const isLoadingThisCat = loadingSkillsMap[catId];
+                      {/* CATEGORY GRID: 2 Categories per row */}
+                      <div className="grid grid-cols-2 gap-3">
+                        {categories.map((cat) => {
+                          const isExpanded = expandedCategoryIds.includes(cat.id);
+                          const catSkills = categorySkills[cat.id] || [];
+                          const selectedCountInCat = catSkills.filter((s) =>
+                            regData.skill_ids.includes(s.id)
+                          ).length;
+                          const displayName = getLocalizedName(cat);
 
                           return (
-                            <div
-                              key={catId}
-                              className="rounded-2xl border border-emerald-200/90 bg-emerald-50/40 p-3 sm:p-3.5 space-y-2.5 transition-all shadow-xs animate-in fade-in slide-in-from-top-1"
+                            <button
+                              key={cat.id}
+                              type="button"
+                              onClick={() => toggleCategory(cat.id)}
+                              className={`group relative flex items-center justify-between p-3.5 rounded-2xl border text-left transition-all cursor-pointer ${
+                                isExpanded
+                                  ? "border-[#00695C] bg-white ring-2 ring-[#00695C]/20 shadow-sm"
+                                  : selectedCountInCat > 0
+                                  ? "border-emerald-300 bg-white hover:border-emerald-500 shadow-xs"
+                                  : "border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50/80 shadow-xs"
+                              }`}
                             >
-                              {/* Category Header within skills box */}
-                              <div className="flex items-center justify-between border-b border-emerald-200/60 pb-2">
-                                <div className="flex items-center gap-2">
-                                  <div className="flex h-5 w-5 items-center justify-center rounded-md bg-[#00695C] text-white">
-                                    {getCategoryIcon(catId, catName)}
-                                  </div>
-                                  <span className="text-xs font-bold text-slate-800">
-                                    {catName}
-                                  </span>
-                                  <span className="text-[11px] text-slate-500 font-medium">
-                                    ({skills.length} {language === "bn" ? "টি দক্ষতা" : "skills"})
-                                  </span>
+                              <div className="flex items-center gap-3 min-w-0">
+                                <div
+                                  className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl transition-colors ${
+                                    isExpanded
+                                      ? "bg-[#00695C] text-white shadow-xs"
+                                      : selectedCountInCat > 0
+                                      ? "bg-emerald-100 text-[#00695C]"
+                                      : "bg-slate-100 text-slate-600 group-hover:bg-slate-200"
+                                  }`}
+                                >
+                                  {getCategoryIcon(cat.id, displayName)}
                                 </div>
 
-                                <button
-                                  type="button"
-                                  onClick={() => toggleCategory(catId)}
-                                  className="text-[10px] text-slate-400 hover:text-slate-600 font-bold uppercase tracking-wider cursor-pointer"
-                                >
-                                  {language === "bn" ? "বন্ধ করুন" : "Close"}
-                                </button>
+                                <div className="min-w-0">
+                                  <p
+                                    className={`text-xs sm:text-sm font-bold truncate leading-tight ${
+                                      isExpanded ? "text-[#00695C]" : "text-slate-800"
+                                    }`}
+                                  >
+                                    {displayName}
+                                  </p>
+                                  {selectedCountInCat > 0 && (
+                                    <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 mt-1">
+                                      <Check size={11} strokeWidth={3} />
+                                      <span>
+                                        {selectedCountInCat}{" "}
+                                        {isBn ? "টি নির্বাচিত" : "selected"}
+                                      </span>
+                                    </span>
+                                  )}
+                                </div>
                               </div>
 
-                              {/* Skills List as Pills matching screenshot */}
-                              {isLoadingThisCat ? (
-                                <div className="flex items-center justify-center py-4 gap-2 text-xs font-semibold text-emerald-800">
-                                  <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-[#00695C] border-t-transparent" />
-                                  <span>{t.common?.loading || "Loading skills..."}</span>
-                                </div>
-                              ) : skills.length === 0 ? (
-                                <p className="text-xs text-slate-500 py-2 text-center">
-                                  {language === "bn"
-                                    ? "এই ক্যাটাগরিতে কোনো দক্ষতা পাওয়া যায়নি।"
-                                    : "No skills found under this category."}
-                                </p>
-                              ) : (
-                                <div className="flex flex-wrap gap-2">
-                                  {skills.map((skill) => {
-                                    const isSelected = regData.skill_ids.includes(skill.id);
-                                    return (
-                                      <button
-                                        key={skill.id}
-                                        type="button"
-                                        onClick={() => handleToggleSkill(skill.id)}
-                                        className={`flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-bold transition-all cursor-pointer border ${
-                                          isSelected
-                                            ? "bg-[#00695C] text-white border-[#005448] shadow-sm scale-[1.01]"
-                                            : "bg-white text-slate-700 border-slate-200 hover:bg-slate-100 hover:border-slate-300 shadow-xs"
-                                        }`}
-                                      >
-                                        {/* Checkbox square matching screenshot */}
-                                        <span
-                                          className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border transition-colors ${
-                                            isSelected
-                                              ? "bg-white text-[#00695C] border-white shadow-xs"
-                                              : "border-slate-300 bg-white"
-                                          }`}
-                                        >
-                                          {isSelected && (
-                                            <Check size={12} strokeWidth={3.5} />
-                                          )}
-                                        </span>
-                                        <span>{skill.name}</span>
-                                      </button>
-                                    );
-                                  })}
-                                </div>
-                              )}
-                            </div>
+                              <div
+                                className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-slate-400 transition-transform ${
+                                  isExpanded ? "rotate-180 text-[#00695C]" : ""
+                                }`}
+                              >
+                                <ChevronDown size={16} />
+                              </div>
+                            </button>
                           );
                         })}
                       </div>
-                    )}
 
-                    {/* All Selected Skills Summary Strip */}
-                    {regData.skill_ids.length > 0 && (
-                      <div className="pt-1">
-                        <div className="flex items-center justify-between text-[11px] font-bold text-slate-600 mb-1">
-                          <span>
-                            {t.register?.selectedSkillsSummary || "All Selected Skills"}:
-                          </span>
-                          <span className="text-emerald-700">
-                            {regData.skill_ids.length}{" "}
-                            {language === "bn" ? "টি" : "chosen"}
-                          </span>
-                        </div>
-                        <div className="flex flex-wrap gap-1.5 p-2 rounded-xl bg-slate-50 border border-slate-200 max-h-24 overflow-y-auto">
-                          {regData.skill_ids.map((id) => {
-                            const skillItem = allSkillsList.find((s) => s.id === id);
-                            const name = skillItem ? skillItem.name : `Skill #${id}`;
+                      {/* EXPANDED SKILLS BOXES */}
+                      {expandedCategoryIds.length > 0 && (
+                        <div className="space-y-3 pt-1">
+                          {expandedCategoryIds.map((catId) => {
+                            const catObj = categories.find((c) => c.id === catId);
+                            const catName = getLocalizedName(catObj) || `Category ${catId}`;
+                            const skills = categorySkills[catId] || [];
+                            const isLoadingThisCat = loadingSkillsMap[catId];
+
                             return (
-                              <span
-                                key={id}
-                                className="inline-flex items-center gap-1 rounded-lg bg-[#00695C] px-2 py-1 text-[11px] font-bold text-white shadow-xs"
+                              <div
+                                key={catId}
+                                className="rounded-2xl border border-emerald-200/90 bg-emerald-50/50 p-4 space-y-3 transition-all shadow-xs animate-in fade-in slide-in-from-top-1"
                               >
-                                <span>{name}</span>
-                                <button
-                                  type="button"
-                                  onClick={() => handleToggleSkill(id)}
-                                  className="text-emerald-200 hover:text-white cursor-pointer ml-0.5"
-                                  title="Remove"
-                                >
-                                  <X size={12} strokeWidth={2.5} />
-                                </button>
-                              </span>
+                                <div className="flex items-center justify-between border-b border-emerald-200/70 pb-2">
+                                  <div className="flex items-center gap-2">
+                                    <div className="flex h-6 w-6 items-center justify-center rounded-lg bg-[#00695C] text-white">
+                                      {getCategoryIcon(catId, catName)}
+                                    </div>
+                                    <span className="text-xs sm:text-sm font-bold text-slate-900">
+                                      {catName}
+                                    </span>
+                                    <span className="text-xs text-slate-500 font-medium">
+                                      ({skills.length} {isBn ? "টি দক্ষতা" : "skills"})
+                                    </span>
+                                  </div>
+
+                                  <button
+                                    type="button"
+                                    onClick={() => toggleCategory(catId)}
+                                    className="text-xs text-slate-500 hover:text-slate-800 font-bold cursor-pointer"
+                                  >
+                                    {t.register?.skillsClose || (isBn ? "বন্ধ করুন" : "Close")}
+                                  </button>
+                                </div>
+
+                                {isLoadingThisCat ? (
+                                  <div className="flex items-center justify-center py-4 gap-2 text-xs font-semibold text-emerald-800">
+                                    <span className="h-4 w-4 animate-spin rounded-full border-2 border-[#00695C] border-t-transparent" />
+                                    <span>{t.common?.loading || (isBn ? "লোড হচ্ছে..." : "Loading...")}</span>
+                                  </div>
+                                ) : skills.length === 0 ? (
+                                  <p className="text-xs text-slate-500 py-2 text-center font-medium">
+                                    {t.register?.skillsEmpty ||
+                                      (isBn
+                                        ? "এই ক্যাটাগরিতে কোনো দক্ষতা পাওয়া যায়নি।"
+                                        : "No skills found under this category.")}
+                                  </p>
+                                ) : (
+                                  <div className="flex flex-wrap gap-2.5">
+                                    {skills.map((skill) => {
+                                      const isSelected = regData.skill_ids.includes(skill.id);
+                                      const skillName = getLocalizedName(skill);
+                                      return (
+                                        <button
+                                          key={skill.id}
+                                          type="button"
+                                          onClick={() => handleToggleSkill(skill.id)}
+                                          className={`flex items-center gap-2 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm font-bold transition-all cursor-pointer border ${
+                                            isSelected
+                                              ? "bg-[#00695C] text-white border-[#005448] shadow-sm"
+                                              : "bg-white text-slate-800 border-slate-200 hover:bg-slate-50 hover:border-slate-300 shadow-xs"
+                                          }`}
+                                        >
+                                          <span
+                                            className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border transition-colors ${
+                                              isSelected
+                                                ? "bg-white text-[#00695C] border-white shadow-xs"
+                                                : "border-slate-300 bg-white"
+                                            }`}
+                                          >
+                                            {isSelected && (
+                                              <Check size={12} strokeWidth={3.5} />
+                                            )}
+                                          </span>
+                                          <span>{skillName}</span>
+                                        </button>
+                                      );
+                                    })}
+                                  </div>
+                                )}
+                              </div>
                             );
                           })}
                         </div>
-                      </div>
-                    )}
-                  </div>
+                      )}
 
-                  {/* Location Section */}
-                  <div className="pt-2 border-t border-slate-200 space-y-3">
-                    <div className="flex items-center justify-between">
-                      <label className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
-                        <MapPin size={14} className="text-[#00695C]" />
-                        <span>{t.register?.locationSectionTitle || "Location & Coverage"}</span>
-                      </label>
+                      {/* Selected Skills Summary Strip */}
+                      {regData.skill_ids.length > 0 && (
+                        <div className="pt-2">
+                          <div className="flex items-center justify-between text-xs font-bold text-slate-700 mb-1.5">
+                            <span>
+                              {t.register?.selectedSkillsSummary || (isBn ? "নির্বাচিত দক্ষতাসমূহ" : "Selected Skills")}:
+                            </span>
+                            <span className="text-emerald-700">
+                              {regData.skill_ids.length}{" "}
+                              {isBn ? "টি" : "selected"}
+                            </span>
+                          </div>
+                          <div className="flex flex-wrap gap-2 p-2.5 rounded-2xl bg-white border border-slate-200 max-h-28 overflow-y-auto">
+                            {regData.skill_ids.map((id) => {
+                              const skillItem = allSkillsList.find((s) => s.id === id);
+                              const name = skillItem ? getLocalizedName(skillItem) : `Skill #${id}`;
+                              return (
+                                <span
+                                  key={id}
+                                  className="inline-flex items-center gap-1.5 rounded-xl bg-[#00695C] px-3 py-1 text-xs font-bold text-white shadow-xs"
+                                >
+                                  <span>{name}</span>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleToggleSkill(id)}
+                                    className="text-emerald-200 hover:text-white cursor-pointer ml-1"
+                                    title="Remove"
+                                  >
+                                    <X size={13} strokeWidth={2.5} />
+                                  </button>
+                                </span>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+                    </div>
 
+                    {/* Step 2 Buttons: Consistent design, Back is smaller */}
+                    <div className="pt-2 flex items-center gap-3">
                       <button
                         type="button"
-                        onClick={handleDetectLocation}
-                        disabled={detectingLocation}
-                        className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-50 px-2.5 py-1 text-[11px] font-bold text-[#00695C] border border-emerald-200 hover:bg-emerald-100 transition-colors cursor-pointer disabled:opacity-50"
+                        onClick={() => {
+                          setRegisterStep(1);
+                          setStatusMessage(null);
+                        }}
+                        className="flex items-center justify-center gap-2 rounded-2xl bg-[#00695C] hover:bg-[#00574C] py-3.5 px-6 text-sm font-bold text-white shadow-md shadow-[#00695C]/20 transition-all active:scale-[0.99] cursor-pointer shrink-0"
                       >
-                        <Navigation
-                          size={12}
-                          className={detectingLocation ? "animate-spin text-[#00695C]" : ""}
-                        />
-                        <span>
-                          {detectingLocation
-                            ? t.register?.detectingLocation || "Locating..."
-                            : t.register?.detectLocationBtn || "Detect My GPS"}
-                        </span>
+                        <ArrowLeft size={16} />
+                        <span>{t.register?.backBtn || (isBn ? "পূর্ববর্তী" : "Back")}</span>
+                      </button>
+
+                      <button
+                        type="submit"
+                        className="flex-1 flex items-center justify-center gap-2 rounded-2xl bg-[#00695C] hover:bg-[#00574C] py-3.5 px-6 text-sm sm:text-base font-bold text-white shadow-lg shadow-[#00695C]/25 transition-all active:scale-[0.99] cursor-pointer"
+                      >
+                        <span>{t.register?.continueBtn || (isBn ? "পরবর্তী ধাপ" : "Continue")}</span>
+                        <ArrowRight size={18} />
                       </button>
                     </div>
+                  </form>
+                )}
 
-                    {locationNotice && (
-                      <p className="text-[11px] text-emerald-700 bg-emerald-50/70 p-1.5 rounded-lg border border-emerald-200">
-                        {locationNotice}
-                      </p>
-                    )}
+                {/* ────────────────────────────────────────────────────────── */}
+                {/* STEP 3: LOCATION SEARCH, GOOGLE MAP PIN & RADIUS           */}
+                {/* ────────────────────────────────────────────────────────── */}
+                {registerStep === 3 && (
+                  <form onSubmit={handleRegisterSubmit} className="space-y-4 animate-in fade-in slide-in-from-right-4 duration-200">
+                    <div className="rounded-2xl border border-slate-200/90 bg-slate-50/50 p-4 sm:p-5 space-y-4">
+                      {/* Section Title */}
+                      <div className="flex items-center justify-between border-b border-slate-200/80 pb-2.5">
+                        <div className="flex items-center gap-2">
+                          <MapPin size={16} className="text-[#00695C]" />
+                          <h3 className="text-xs sm:text-sm font-bold uppercase tracking-wider text-slate-800">
+                            {t.register?.locationSectionTitle || (isBn ? "কাজের এলাকা ও পরিধি" : "Service Area & Location")}
+                          </h3>
+                          <span className="text-rose-500 font-bold">*</span>
+                        </div>
 
-                    <div className="grid grid-cols-2 gap-2.5">
-                      <div>
-                        <label className="block text-[11px] font-semibold text-slate-600 mb-0.5">
-                          {t.register?.latitudeLabel || "Latitude"}
-                          <span className="text-rose-500 ml-0.5">*</span>
-                        </label>
-                        <input
-                          type="number"
-                          step="any"
-                          required
-                          value={regData.latitude}
-                          onChange={(e) =>
-                            setRegData({ ...regData, latitude: parseFloat(e.target.value) || 0 })
-                          }
-                          className="w-full rounded-xl border border-slate-300 bg-white px-2.5 py-1.5 text-xs text-slate-900 font-mono focus:border-[#00695C] focus:outline-none"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-[11px] font-semibold text-slate-600 mb-0.5">
-                          {t.register?.longitudeLabel || "Longitude"}
-                          <span className="text-rose-500 ml-0.5">*</span>
-                        </label>
-                        <input
-                          type="number"
-                          step="any"
-                          required
-                          value={regData.longitude}
-                          onChange={(e) =>
-                            setRegData({ ...regData, longitude: parseFloat(e.target.value) || 0 })
-                          }
-                          className="w-full rounded-xl border border-slate-300 bg-white px-2.5 py-1.5 text-xs text-slate-900 font-mono focus:border-[#00695C] focus:outline-none"
-                        />
-                      </div>
-                    </div>
-
-                    <div>
-                      <div className="flex items-center justify-between mb-1">
-                        <label className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
-                          <Sliders size={13} className="text-[#00695C]" />
-                          <span>{t.register?.radiusLabel || "Working Radius"}:</span>
-                        </label>
-                        <span className="rounded-md bg-[#00695C] px-2 py-0.5 text-xs font-extrabold text-white">
-                          {regData.working_radius_km} {t.common?.km || "KM"}
+                        {/* Location Synced Badge */}
+                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-emerald-100 text-[#00695C] text-xs font-bold border border-emerald-200">
+                          <Check size={12} strokeWidth={3} />
+                          <span>{t.register?.gpsSynced || (isBn ? "জিপিএস যুক্ত" : "GPS Synced")}</span>
                         </span>
                       </div>
-                      <input
-                        type="range"
-                        min="1"
-                        max="5"
-                        step="1"
-                        value={regData.working_radius_km}
-                        onChange={(e) =>
-                          setRegData({
-                            ...regData,
-                            working_radius_km: parseInt(e.target.value, 10),
-                          })
-                        }
-                        className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-[#00695C]"
-                      />
-                      <div className="flex justify-between text-[10px] text-slate-400 mt-0.5 font-semibold">
-                        <span>1 KM (Local)</span>
-                        <span>3 KM</span>
-                        <span>5 KM (Max Coverage)</span>
+
+                      {/* Location Search Box + Map Icon Button */}
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                          {t.register?.baseAddressLabel || (isBn ? "কর্মস্থলের ঠিকানা বা এলাকা" : "Base Address or Area")}
+                          <span className="text-rose-500 ml-0.5">*</span>
+                        </label>
+
+                        <div className="flex items-center gap-2">
+                          {/* Search Input Box */}
+                          <div className="relative flex-1">
+                            <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3.5 text-slate-400">
+                              <MapPin size={18} className="text-[#00695C]" />
+                            </div>
+                            <input
+                              type="text"
+                              required
+                              value={regData.base_address}
+                              onChange={(e) =>
+                                setRegData({ ...regData, base_address: e.target.value })
+                              }
+                              placeholder={
+                                t.register?.baseAddressPlaceholder ||
+                                (isBn
+                                  ? "ঠিকানা লিখুন অথবা পাশের ম্যাপ আইকনে ক্লিক করে পিন করুন..."
+                                  : "Enter address or click map icon to pin location...")
+                              }
+                              className="w-full rounded-xl border border-slate-300 bg-white pl-10 pr-3.5 py-3 text-sm text-slate-900 placeholder:text-slate-400 focus:border-[#00695C] focus:outline-none focus:ring-2 focus:ring-[#00695C]/20 transition-all font-medium"
+                            />
+                          </div>
+
+                          {/* Map Icon Button to Open Google Maps */}
+                          <button
+                            type="button"
+                            onClick={() => setIsMapModalOpen(true)}
+                            title={isBn ? "গুগল ম্যাপে লোকেশন পিন করুন" : "Pin location on Google Maps"}
+                            className="flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-[#00695C] hover:bg-[#00574C] text-white text-xs sm:text-sm font-bold shadow-md shadow-[#00695C]/20 transition-all cursor-pointer shrink-0"
+                          >
+                            <MapIcon size={18} />
+                            <span className="hidden sm:inline">
+                              {t.register?.pickOnMapBtn || (isBn ? "ম্যাপে পিন করুন" : "Pick on Map")}
+                            </span>
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Selected Location Confirmation Card */}
+                      {regData.base_address && (
+                        <div className="p-3.5 rounded-xl bg-white border border-emerald-200 flex items-start gap-3 shadow-2xs">
+                          <div className="w-8 h-8 rounded-lg bg-emerald-100 text-[#00695C] flex items-center justify-center shrink-0 mt-0.5">
+                            <CheckCircle2 size={18} />
+                          </div>
+                          <div className="min-w-0">
+                            <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+                              {t.register?.confirmedLocation || (isBn ? "নির্ধারিত অবস্থান" : "Confirmed Location")}
+                            </p>
+                            <p className="text-xs sm:text-sm font-bold text-slate-800 leading-snug break-words">
+                              {regData.base_address}
+                            </p>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Working Radius Progress Bar Slider (Max 5 km, Green for Selected portion) */}
+                      <div className="pt-2">
+                        <div className="flex items-center justify-between mb-2">
+                          <label className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                            <Sliders size={14} className="text-[#00695C]" />
+                            <span>{t.register?.radiusLabel || (isBn ? "কাজের পরিধি" : "Working Radius")}:</span>
+                          </label>
+                          <span className="rounded-lg bg-[#00695C] px-3 py-1 text-xs font-black text-white shadow-2xs">
+                            {regData.working_radius_km} {t.common?.km || (isBn ? "কিমি" : "KM")}
+                          </span>
+                        </div>
+
+                        {/* Slider with dynamic green track before thumb */}
+                        <div className="relative pt-1 pb-2">
+                          <input
+                            type="range"
+                            min="1"
+                            max="5"
+                            step="1"
+                            value={regData.working_radius_km}
+                            onChange={(e) =>
+                              setRegData({
+                                ...regData,
+                                working_radius_km: parseInt(e.target.value, 10),
+                              })
+                            }
+                            style={{
+                              background: `linear-gradient(to right, #00695C 0%, #00695C ${radiusProgressPct}%, #e2e8f0 ${radiusProgressPct}%, #e2e8f0 100%)`,
+                            }}
+                            className="w-full h-3 rounded-lg appearance-none cursor-pointer accent-[#00695C] focus:outline-none"
+                          />
+
+                          {/* Distance Indicators */}
+                          <div className="flex justify-between text-xs text-slate-500 mt-2 font-bold">
+                            <span className={regData.working_radius_km === 1 ? "text-[#00695C]" : ""}>
+                              {isBn ? "১ কিমি" : "1 KM"}
+                            </span>
+                            <span className={regData.working_radius_km === 2 ? "text-[#00695C]" : ""}>
+                              {isBn ? "২ কিমি" : "2 KM"}
+                            </span>
+                            <span className={regData.working_radius_km === 3 ? "text-[#00695C]" : ""}>
+                              {isBn ? "৩ কিমি" : "3 KM"}
+                            </span>
+                            <span className={regData.working_radius_km === 4 ? "text-[#00695C]" : ""}>
+                              {isBn ? "৪ কিমি" : "4 KM"}
+                            </span>
+                            <span className={regData.working_radius_km === 5 ? "text-[#00695C]" : ""}>
+                              {isBn ? "৫ কিমি (সর্বোচ্চ)" : "5 KM (Max)"}
+                            </span>
+                          </div>
+                        </div>
                       </div>
                     </div>
 
-                    <div>
-                      <label className="block text-xs font-bold text-slate-700 mb-1">
-                        {t.register?.baseAddressLabel || "Base Address"}
+                    {/* Terms Checkbox with THEME GREEN TICK BOX */}
+                    <div className="pt-1 space-y-4">
+                      <label className="flex items-start gap-3 cursor-pointer text-xs sm:text-sm text-slate-700 font-medium select-none group">
+                        {/* Custom Green Checkbox Button */}
+                        <button
+                          type="button"
+                          role="checkbox"
+                          aria-checked={regData.agreeTerms}
+                          onClick={() =>
+                            setRegData({ ...regData, agreeTerms: !regData.agreeTerms })
+                          }
+                          className={`mt-0.5 w-5 h-5 rounded-md flex items-center justify-center transition-all cursor-pointer shrink-0 border ${
+                            regData.agreeTerms
+                              ? "bg-[#00695C] border-[#00695C] text-white shadow-xs"
+                              : "bg-white border-slate-300 hover:border-[#00695C]"
+                          }`}
+                        >
+                          {regData.agreeTerms && <Check size={13} strokeWidth={3.5} />}
+                        </button>
+
+                        <span className="leading-snug pt-0.5">
+                          {isBn ? (
+                            <>
+                              আমি নির্ভর প্ল্যাটফর্মের{" "}
+                              <Link
+                                href="/terms"
+                                className="font-bold text-[#00695C] hover:underline"
+                              >
+                                ব্যবহারের শর্তাবলী
+                              </Link>{" "}
+                              এবং{" "}
+                              <Link
+                                href="/privacy"
+                                className="font-bold text-[#00695C] hover:underline"
+                              >
+                                গোপনীয়তা নীতি
+                              </Link>{" "}
+                              মেনে নিচ্ছি।
+                            </>
+                          ) : (
+                            <>
+                              I agree to the Nirbhor{" "}
+                              <Link
+                                href="/terms"
+                                className="font-bold text-[#00695C] hover:underline"
+                              >
+                                Terms of Service
+                              </Link>{" "}
+                              and{" "}
+                              <Link
+                                href="/privacy"
+                                className="font-bold text-[#00695C] hover:underline"
+                              >
+                                Privacy Policy
+                              </Link>
+                              .
+                            </>
+                          )}
+                        </span>
                       </label>
-                      <input
-                        type="text"
-                        value={regData.base_address}
-                        onChange={(e) =>
-                          setRegData({ ...regData, base_address: e.target.value })
-                        }
-                        placeholder={
-                          t.register?.baseAddressPlaceholder ||
-                          "e.g. House 14, Road 5, Block C, Mirpur, Dhaka"
-                        }
-                        className="w-full rounded-xl border border-slate-300 bg-slate-50/50 px-3 py-2 text-xs sm:text-sm text-slate-900 placeholder:text-slate-400 focus:border-[#00695C] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#00695C]/20 transition-all"
-                      />
-                      <p className="text-[10px] text-slate-400 mt-1">
-                        {t.register?.baseAddressHint || "At least 5 characters (Area, Road, City)"}
-                      </p>
+
+                      {/* Step 3 Buttons: Consistent design, Back is smaller */}
+                      <div className="flex items-center gap-3">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setRegisterStep(2);
+                            setStatusMessage(null);
+                          }}
+                          className="flex items-center justify-center gap-2 rounded-2xl bg-[#00695C] hover:bg-[#00574C] py-3.5 px-6 text-sm font-bold text-white shadow-md shadow-[#00695C]/20 transition-all active:scale-[0.99] cursor-pointer shrink-0"
+                        >
+                          <ArrowLeft size={16} />
+                          <span>{t.register?.backBtn || (isBn ? "পূর্ববর্তী" : "Back")}</span>
+                        </button>
+
+                        <button
+                          type="submit"
+                          disabled={loading}
+                          className="flex-1 flex items-center justify-center gap-2 rounded-2xl bg-[#00695C] hover:bg-[#00574C] py-3.5 px-6 text-sm sm:text-base font-bold text-white shadow-lg shadow-[#00695C]/25 transition-all active:scale-[0.99] disabled:opacity-60 cursor-pointer"
+                        >
+                          {loading ? (
+                            <span className="flex items-center gap-2">
+                              <span className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                              <span>{t.register?.submittingBtn || (isBn ? "অ্যাকাউন্ট তৈরি হচ্ছে..." : "Creating Account...")}</span>
+                            </span>
+                          ) : (
+                            <>
+                              <span>{t.register?.submitBtn || (isBn ? "নিবন্ধন সম্পন্ন করুন" : "Register as Provider")}</span>
+                              <CheckCircle2 size={18} />
+                            </>
+                          )}
+                        </button>
+                      </div>
                     </div>
-                  </div>
+                  </form>
+                )}
 
-                  {/* Terms Checkbox */}
-                  <div className="flex items-start gap-2.5 pt-1">
-                    <input
-                      id="terms"
-                      type="checkbox"
-                      checked={regData.agreeTerms}
-                      onChange={(e) =>
-                        setRegData({ ...regData, agreeTerms: e.target.checked })
-                      }
-                      className="mt-0.5 h-4 w-4 rounded border-slate-300 text-[#00695C] focus:ring-[#00695C] cursor-pointer"
-                    />
-                    <label htmlFor="terms" className="text-xs leading-tight text-slate-600 cursor-pointer">
-                      {t.register?.agreeTerms || "I agree to the"}{" "}
-                      <span className="font-semibold text-[#00695C] underline">
-                        {t.register?.termsOfService || "Terms of Service"}
-                      </span>{" "}
-                      {t.register?.and || "and"}{" "}
-                      <span className="font-semibold text-[#00695C] underline">
-                        {t.register?.privacyPolicy || "Privacy Policy"}
-                      </span>
-                      .
-                    </label>
-                  </div>
-
-                  {/* Submit Button */}
-                  <button
-                    type="submit"
-                    disabled={loading}
-                    className="w-full flex items-center justify-center gap-2 rounded-xl bg-[#00695C] py-3 px-4 text-xs sm:text-sm font-bold text-white shadow-lg shadow-[#00695C]/25 transition-all hover:bg-[#00574C] hover:shadow-xl active:scale-[0.99] disabled:opacity-70 cursor-pointer"
-                  >
-                    {loading ? (
-                      <span className="flex items-center gap-2">
-                        <span className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
-                        <span>{t.register?.submittingBtn || "Creating Account..."}</span>
-                      </span>
-                    ) : (
-                      <>
-                        <span>{t.register?.submitBtn || "Complete Registration"}</span>
-                        <ArrowRight size={15} />
-                      </>
-                    )}
-                  </button>
-                </form>
+                {/* Google Map Picker Modal */}
+                <GoogleMapPickerModal
+                  isOpen={isMapModalOpen}
+                  onClose={() => setIsMapModalOpen(false)}
+                  initialLat={regData.latitude}
+                  initialLng={regData.longitude}
+                  initialAddress={regData.base_address}
+                  onConfirmLocation={handleLocationConfirmed}
+                  language={language}
+                />
               </div>
             ) : (
               /* ========================================================== */
-              /* LOGIN MODE FORM                                            */
+              /* LOGIN FORM                                                 */
               /* ========================================================== */
               <div>
-                <div className="mb-6">
-                  <div className="flex items-center gap-2">
-                    <span className="rounded-md bg-emerald-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-emerald-800">
-                      POST /api/v1/auth/login
-                    </span>
-                  </div>
-                  <h2 className="text-2xl font-black tracking-tight text-slate-900 mt-1">
-                    {t.auth?.loginTitle || "Welcome Back"}
+                <div className="mb-7">
+                  <h2 className="text-2xl sm:text-3xl font-black tracking-tight text-slate-900">
+                    {t.auth?.loginTitle || (isBn ? "পুনরায় স্বাগতম" : "Welcome Back")}
                   </h2>
-                  <p className="mt-1 text-xs text-slate-500 font-medium">
+                  <p className="mt-1.5 text-sm text-slate-500 font-medium">
                     {t.auth?.loginSubtitle ||
-                      "Log in to access your Nirbhor account and verified tasks."}
+                      (isBn
+                        ? "আপনার নির্ভর অ্যাকাউন্ট ও কাজের তালিকায় প্রবেশ করতে লগইন করুন।"
+                        : "Log in to access your Nirbhor account and verified tasks.")}
                   </p>
                 </div>
 
                 <form onSubmit={handleLoginSubmit} className="space-y-4">
+                  {/* Phone Input */}
                   <div>
-                    <label className="block text-xs font-bold text-slate-700 mb-1">
-                      {t.login?.phoneLabel || "Phone Number"}
+                    <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                      {t.login?.phoneLabel || (isBn ? "মোবাইল ফোন নম্বর" : "Mobile Phone Number")}
                       <span className="text-rose-500 ml-0.5">*</span>
                     </label>
                     <div className="relative">
-                      <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-slate-400">
-                        <Phone size={15} />
+                      <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3.5 text-slate-400">
+                        <Phone size={16} />
                       </div>
                       <input
-                        type="text"
+                        type="tel"
                         required
                         value={loginData.username}
                         onChange={(e) =>
-                          setLoginData({
-                            ...loginData,
-                            username: e.target.value,
-                          })
+                          setLoginData({ ...loginData, username: e.target.value })
                         }
-                        placeholder={t.login?.phonePlaceholder || "01800000001"}
-                        className="w-full rounded-xl border border-slate-300 bg-slate-50/50 pl-9 pr-3.5 py-2.5 text-xs sm:text-sm text-slate-900 placeholder:text-slate-400 focus:border-[#00695C] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#00695C]/20 transition-all font-mono"
+                        placeholder={
+                          t.login?.phonePlaceholder ||
+                          (isBn ? "০১৭XXXXXXXX" : "01712345678")
+                        }
+                        maxLength={11}
+                        className="w-full rounded-xl border border-slate-300 bg-white pl-10 pr-3.5 py-3 text-sm text-slate-900 placeholder:text-slate-400 focus:border-[#00695C] focus:outline-none focus:ring-2 focus:ring-[#00695C]/20 transition-all font-mono font-medium"
                       />
                     </div>
-                    <p className="text-[10px] text-slate-400 mt-1">
-                      {t.login?.phoneHint || "Registered mobile number"}
-                    </p>
                   </div>
 
+                  {/* Password Input */}
                   <div>
-                    <div className="flex items-center justify-between mb-1">
+                    <div className="flex items-center justify-between mb-1.5">
                       <label className="block text-xs font-bold text-slate-700">
-                        {t.login?.passwordLabel || "Password"}
+                        {t.login?.passwordLabel || (isBn ? "পাসওয়ার্ড" : "Password")}
                         <span className="text-rose-500 ml-0.5">*</span>
                       </label>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          alert(
-                            language === "bn"
-                              ? "পাসওয়ার্ড রিসেট লিংক আপনার মোবাইলে এসএমএস এর মাধ্যমে পাঠানো হবে।"
-                              : "Password reset instructions will be sent via SMS."
-                          )
-                        }
-                        className="text-[11px] font-medium text-[#00695C] hover:underline cursor-pointer"
+                      <Link
+                        href="/forgot-password"
+                        className="text-xs font-semibold text-[#00695C] hover:underline"
                       >
-                        {t.login?.forgotPassword || "Forgot?"}
-                      </button>
+                        {t.login?.forgotPassword || (isBn ? "পাসওয়ার্ড ভুলে গেছেন?" : "Forgot password?")}
+                      </Link>
                     </div>
                     <div className="relative">
-                      <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-slate-400">
-                        <Lock size={15} />
+                      <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3.5 text-slate-400">
+                        <Lock size={16} />
                       </div>
                       <input
                         type={showPassword ? "text" : "password"}
                         required
                         value={loginData.password}
                         onChange={(e) =>
-                          setLoginData({
-                            ...loginData,
-                            password: e.target.value,
-                          })
+                          setLoginData({ ...loginData, password: e.target.value })
                         }
                         placeholder={t.login?.passwordPlaceholder || "••••••••"}
-                        className="w-full rounded-xl border border-slate-300 bg-slate-50/50 pl-9 pr-10 py-2.5 text-xs sm:text-sm text-slate-900 placeholder:text-slate-400 focus:border-[#00695C] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#00695C]/20 transition-all font-mono"
+                        className="w-full rounded-xl border border-slate-300 bg-white pl-10 pr-10 py-3 text-sm text-slate-900 placeholder:text-slate-400 focus:border-[#00695C] focus:outline-none focus:ring-2 focus:ring-[#00695C]/20 transition-all font-mono font-medium"
                       />
                       <button
                         type="button"
                         onClick={() => setShowPassword(!showPassword)}
-                        className="absolute inset-y-0 right-0 flex items-center pr-3 text-slate-400 hover:text-slate-600 cursor-pointer"
+                        className="absolute inset-y-0 right-0 flex items-center pr-3.5 text-slate-400 hover:text-slate-600 cursor-pointer"
                       >
-                        {showPassword ? <EyeOff size={15} /> : <Eye size={15} />}
+                        {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
                       </button>
                     </div>
                   </div>
 
-                  <div className="flex items-center justify-between text-xs pt-1">
-                    <label className="flex items-center gap-2 cursor-pointer text-slate-600">
-                      <input
-                        type="checkbox"
-                        checked={loginData.rememberMe}
-                        onChange={(e) =>
+                  {/* Remember Me */}
+                  <div className="flex items-center justify-between pt-1">
+                    <label className="flex items-center gap-2 cursor-pointer text-xs sm:text-sm text-slate-700 font-medium select-none">
+                      <button
+                        type="button"
+                        role="checkbox"
+                        aria-checked={loginData.rememberMe}
+                        onClick={() =>
                           setLoginData({
                             ...loginData,
-                            rememberMe: e.target.checked,
+                            rememberMe: !loginData.rememberMe,
                           })
                         }
-                        className="h-3.5 w-3.5 rounded border-slate-300 text-[#00695C] focus:ring-[#00695C] cursor-pointer"
-                      />
-                      <span>{t.login?.rememberMe || "Remember Me"}</span>
+                        className={`w-4 h-4 rounded flex items-center justify-center transition-all cursor-pointer border ${
+                          loginData.rememberMe
+                            ? "bg-[#00695C] border-[#00695C] text-white"
+                            : "bg-white border-slate-300"
+                        }`}
+                      >
+                        {loginData.rememberMe && <Check size={11} strokeWidth={3.5} />}
+                      </button>
+                      <span>{t.login?.rememberMe || (isBn ? "আমাকে মনে রাখুন" : "Remember Me")}</span>
                     </label>
 
                     <button
                       type="button"
                       onClick={fillDemoAccount}
-                      className="text-[11px] font-semibold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-200 hover:bg-emerald-100 transition-colors cursor-pointer flex items-center gap-1"
+                      className="text-xs font-bold text-[#00695C] hover:underline cursor-pointer"
                     >
-                      <Sparkles size={12} className="text-emerald-600" />
-                      <span>{t.login?.demoButton || "Fill Demo Provider"}</span>
+                      {t.login?.demoButton || (isBn ? "ডেমো অ্যাকাউন্ট দিয়ে পূরণ করুন" : "Fill Demo Account")}
                     </button>
                   </div>
 
-                  <button
-                    type="submit"
-                    disabled={loading}
-                    className="w-full flex items-center justify-center gap-2 rounded-xl bg-[#00695C] py-3 px-4 text-xs sm:text-sm font-bold text-white shadow-lg shadow-[#00695C]/25 transition-all hover:bg-[#00574C] hover:shadow-xl active:scale-[0.99] disabled:opacity-70 cursor-pointer"
-                  >
-                    {loading ? (
-                      <span className="flex items-center gap-2">
-                        <span className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
-                        <span>{t.login?.submittingBtn || "Logging in..."}</span>
-                      </span>
-                    ) : (
-                      <>
-                        <span>{t.login?.submitBtn || "Log In"}</span>
-                        <ArrowRight size={15} />
-                      </>
-                    )}
-                  </button>
+                  {/* Submit Login Button */}
+                  <div className="pt-2">
+                    <button
+                      type="submit"
+                      disabled={loading}
+                      className="w-full flex items-center justify-center gap-2 rounded-2xl bg-[#00695C] hover:bg-[#00574C] py-3.5 px-6 text-sm sm:text-base font-bold text-white shadow-lg shadow-[#00695C]/25 transition-all active:scale-[0.99] disabled:opacity-60 cursor-pointer"
+                    >
+                      {loading ? (
+                        <span className="flex items-center gap-2">
+                          <span className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                          <span>{t.login?.submittingBtn || (isBn ? "লগইন হচ্ছে..." : "Logging in...")}</span>
+                        </span>
+                      ) : (
+                        <>
+                          <span>{t.login?.submitBtn || (isBn ? "লগইন করুন" : "Log In")}</span>
+                          <ArrowRight size={18} />
+                        </>
+                      )}
+                    </button>
+                  </div>
                 </form>
               </div>
             )}
-
-            <p className="mt-8 text-center text-[10px] tracking-wider uppercase text-slate-400 font-semibold">
-              {t.auth?.footerCopyright || "VERIFIED TRUST PORTAL • © 2026 NIRBHOR"}
-            </p>
           </div>
         </section>
       </div>
