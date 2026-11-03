@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import {
@@ -24,16 +24,54 @@ import {
   ArrowUpRight,
 } from "lucide-react";
 import ServiceAreaMap from "@/components/ServiceAreaMap";
+import { getAccessToken, fetchUserProfileMe, fetchProviderDashboard } from "@/lib/api";
+import { useLanguage } from "@/lib/LanguageContext";
 
 export default function ProviderProfilePage() {
+  const { language, t } = useLanguage();
+
   // Provider Personal Info State
   const [profile, setProfile] = useState({
     nameEn: "Arif Ahmed",
     nameBn: "আরিফ আহমেদ",
     email: "arif.ahmed@example.com",
     phone: "+880 1712 345678",
-    bio: "Expert plumber with 10+ years experience in residential and commercial maintenance. / ১০ বছরের অভিজ্ঞতাসম্পন্ন দক্ষ প্লাম্বার।",
+    bio: "Expert technician with extensive experience in residential and commercial maintenance.",
   });
+
+  useEffect(() => {
+    const token = getAccessToken();
+    if (token) {
+      fetchUserProfileMe(token, language)
+        .then((user) => {
+          if (user) {
+            setProfile((prev) => ({
+              ...prev,
+              nameEn: user.name || prev.nameEn,
+              nameBn: user.name || prev.nameBn,
+              phone: user.phone || prev.phone,
+            }));
+          }
+        })
+        .catch((e) => console.warn(e));
+
+      fetchProviderDashboard(token, language)
+        .then((dash) => {
+          if (dash?.skills && Array.isArray(dash.skills)) {
+            setSkills(
+              dash.skills.map((s) => ({
+                id: s.id,
+                en: s.name,
+                bn: s.name,
+                isPrimary: false,
+                icon: "wrench",
+              }))
+            );
+          }
+        })
+        .catch((e) => console.warn(e));
+    }
+  }, [language]);
 
   // Skills List State
   const [skills, setSkills] = useState([

@@ -48,26 +48,9 @@ body {
   background: #94a3b8;
 }
 
-/* Radar pulse animation for Dhaka map */
-@keyframes radar-pulse {
-  0% {
-    transform: scale(0.6);
-    opacity: 0.8;
-  }
-  50% {
-    opacity: 0.35;
-  }
-  100% {
-    transform: scale(1.4);
-    opacity: 0;
-  }
-}
-
-.animate-radar {
-  animation: radar-pulse 3s cubic-bezier(0.2, 0.8, 0.2, 1) infinite;
-}
-
-/* Subtle glow effect for premium cards */
-.emerald-glow {
-  box-shadow: 0 10px 30px -10px rgba(0, 105, 92, 0.35);
+/* Range input styling */
+input[type="range"] {
+  height: 6px;
+  border-radius: 5px;
+  background: #e2e8f0;
 }

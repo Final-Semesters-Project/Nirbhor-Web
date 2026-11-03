@@ -223,9 +223,9 @@ export default function AuthScreen({ defaultMode = "register" }) {
   // LOGIN STATE
   // ==========================================
   const [loginData, setLoginData] = useState({
-    username: "01800000001",
-    password: "password123",
-    rememberMe: true,
+    username: "",
+    password: "",
+    rememberMe: false,
   });
 
   // UI state
@@ -499,16 +499,6 @@ export default function AuthScreen({ defaultMode = "register" }) {
     } finally {
       setLoading(false);
     }
-  };
-
-  // Quick Demo Account autofill
-  const fillDemoAccount = () => {
-    setLoginData({
-      username: "01800000001",
-      password: "password123",
-      rememberMe: true,
-    });
-    setStatusMessage(null);
   };
 
   // Progress Bar percentage for Radius Slider (1 to 5 km -> 0% to 100%)
@@ -1512,6 +1502,7 @@ export default function AuthScreen({ defaultMode = "register" }) {
                       <input
                         type="tel"
                         required
+                        autoComplete="off"
                         value={loginData.username}
                         onChange={(e) =>
                           setLoginData({ ...loginData, username: e.target.value })
@@ -1547,6 +1538,7 @@ export default function AuthScreen({ defaultMode = "register" }) {
                       <input
                         type={showPassword ? "text" : "password"}
                         required
+                        autoComplete="new-password"
                         value={loginData.password}
                         onChange={(e) =>
                           setLoginData({ ...loginData, password: e.target.value })
@@ -1587,14 +1579,6 @@ export default function AuthScreen({ defaultMode = "register" }) {
                       </button>
                       <span>{t.login?.rememberMe || (isBn ? "আমাকে মনে রাখুন" : "Remember Me")}</span>
                     </label>
-
-                    <button
-                      type="button"
-                      onClick={fillDemoAccount}
-                      className="text-xs font-bold text-[#00695C] hover:underline cursor-pointer"
-                    >
-                      {t.login?.demoButton || (isBn ? "ডেমো অ্যাকাউন্ট দিয়ে পূরণ করুন" : "Fill Demo Account")}
-                    </button>
                   </div>
 
                   {/* Submit Login Button */}
