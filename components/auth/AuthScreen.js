@@ -30,6 +30,7 @@ import {
   X,
 } from "lucide-react";
 import { useLanguage } from "@/lib/LanguageContext";
+import { useToast } from "@/lib/ToastContext";
 import { saveAuthSession } from "@/lib/auth";
 import {
   registerProviderAccount,
@@ -44,6 +45,7 @@ import GoogleMapPickerModal from "@/components/GoogleMapPickerModal";
 export default function AuthScreen({ defaultMode = "register" }) {
   const router = useRouter();
   const { t, language } = useLanguage();
+  const { showToast } = useToast();
   const isBn = language === "bn";
 
   // Tab mode: 'register' or 'login'
@@ -412,6 +414,12 @@ export default function AuthScreen({ defaultMode = "register" }) {
         if (regData.name_bn?.trim()) localStorage.setItem("user_name_bn", regData.name_bn.trim());
       }
 
+      const regSuccessMsg = isBn
+        ? "আপনার সেবাদাতা অ্যাকাউন্ট সফলভাবে তৈরি হয়েছে! নির্ভরে স্বাগতম।"
+        : "Provider account created successfully! Welcome to Nirbhor.";
+
+      showToast(regSuccessMsg, "success", 1800);
+
       setStatusMessage({
         type: "success",
         text:
@@ -423,16 +431,18 @@ export default function AuthScreen({ defaultMode = "register" }) {
 
       setTimeout(() => {
         router.push("/provider/home");
-      }, 1000);
+      }, 1600);
     } catch (error) {
       console.error("Provider registration error:", error);
+      const regErrorMsg =
+        error.message ||
+        (isBn
+          ? "নিবন্ধন ব্যর্থ হয়েছে। পুনরায় চেষ্টা করুন।"
+          : "Registration failed. Please try again.");
+      showToast(regErrorMsg, "error");
       setStatusMessage({
         type: "error",
-        text:
-          error.message ||
-          (isBn
-            ? "নিবন্ধন ব্যর্থ হয়েছে। পুনরায় চেষ্টা করুন।"
-            : "Registration failed. Please try again."),
+        text: regErrorMsg,
       });
     } finally {
       setLoading(false);
@@ -449,21 +459,23 @@ export default function AuthScreen({ defaultMode = "register" }) {
     const usernameClean = loginData.username.trim().replace(/[\s-]/g, "");
 
     if (!usernameClean) {
+      const err = t.login?.errors?.phoneRequired ||
+        (isBn ? "অনুগ্রহ করে আপনার ফোন নম্বর লিখুন।" : "Please enter your mobile phone number.");
+      showToast(err, "error");
       setStatusMessage({
         type: "error",
-        text:
-          t.login?.errors?.phoneRequired ||
-          (isBn ? "অনুগ্রহ করে আপনার ফোন নম্বর লিখুন।" : "Please enter your mobile phone number."),
+        text: err,
       });
       return;
     }
 
     if (!loginData.password) {
+      const err = t.login?.errors?.passwordRequired ||
+        (isBn ? "অনুগ্রহ করে আপনার পাসওয়ার্ড লিখুন।" : "Please enter your password.");
+      showToast(err, "error");
       setStatusMessage({
         type: "error",
-        text:
-          t.login?.errors?.passwordRequired ||
-          (isBn ? "অনুগ্রহ করে আপনার পাসওয়ার্ড লিখুন।" : "Please enter your password."),
+        text: err,
       });
       return;
     }
@@ -478,9 +490,14 @@ export default function AuthScreen({ defaultMode = "register" }) {
 
       saveAuthSession(response);
       if (typeof window !== "undefined") {
-        if (regData.name_en?.trim()) localStorage.setItem("user_name_en", regData.name_en.trim());
-        if (regData.name_bn?.trim()) localStorage.setItem("user_name_bn", regData.name_bn.trim());
+        if (loginData.username?.trim()) localStorage.setItem("user_phone", loginData.username.trim());
       }
+
+      const loginSuccessMsg = isBn
+        ? "লগইন সফল হয়েছে!"
+        : "Login successful!";
+
+      showToast(loginSuccessMsg, "success", 1800);
 
       setStatusMessage({
         type: "success",
@@ -493,16 +510,18 @@ export default function AuthScreen({ defaultMode = "register" }) {
 
       setTimeout(() => {
         router.push("/provider/home");
-      }, 800);
+      }, 1600);
     } catch (error) {
       console.error("Login error:", error);
+      const loginErrorMsg =
+        error.message ||
+        (isBn
+          ? "ভুল ফোন নম্বর বা পাসওয়ার্ড।"
+          : "Invalid phone number or password.");
+      showToast(loginErrorMsg, "error");
       setStatusMessage({
         type: "error",
-        text:
-          error.message ||
-          (isBn
-            ? "ভুল ফোন নম্বর বা পাসওয়ার্ড।"
-            : "Invalid phone number or password."),
+        text: loginErrorMsg,
       });
     } finally {
       setLoading(false);

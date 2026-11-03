@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -30,15 +30,18 @@ import {
   Lock,
   FileCheck2,
   Shield,
+  Camera,
 } from "lucide-react";
 import {
   fetchUserProfileMe,
   fetchProviderDashboard,
   updateProviderProfile,
+  uploadProfilePhotoToCloudinary,
   getAccessToken,
   clearAuthSession,
 } from "@/lib/api";
 import { useLanguage } from "@/lib/LanguageContext";
+import { useToast } from "@/lib/ToastContext";
 import GoogleMapPickerModal from "@/components/GoogleMapPickerModal";
 import NidVerificationModal from "@/components/provider/NidVerificationModal";
 import AddSkillsModal from "@/components/provider/AddSkillsModal";
@@ -58,6 +61,14 @@ export default function ProviderProfilePage() {
   const [userData, setUserData] = useState(null);
   const [dashboardData, setDashboardData] = useState(null);
 
+  // Profile Photo Upload State (Direct Cloudinary Upload)
+  const [photoPreview, setPhotoPreview] = useState(null);
+  const [uploadedPhotoUrl, setUploadedPhotoUrl] = useState("");
+  const [uploadedPhotoPublicId, setUploadedPhotoPublicId] = useState("");
+  const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
+  const [savingStatusText, setSavingStatusText] = useState("");
+  const fileInputRef = useRef(null);
+
   // Editable Form Fields
   const [formData, setFormData] = useState({
     name: "",
@@ -70,23 +81,18 @@ export default function ProviderProfilePage() {
     working_radius_km: 3,
   });
 
+  // Track initial snapshot and dirty states to only send changed fields in PATCH
+  const [initialData, setInitialData] = useState(null);
+  const [isLocationDirty, setIsLocationDirty] = useState(false);
+
   // Modals
   const [isMapModalOpen, setIsMapModalOpen] = useState(false);
   const [isNidModalOpen, setIsNidModalOpen] = useState(false);
   const [isSkillsModalOpen, setIsSkillsModalOpen] = useState(false);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
 
-  // Toast Feedback
-  const [toastMessage, setToastMessage] = useState(null);
-  const [toastType, setToastType] = useState("success");
-
-  const showToast = (msg, type = "success") => {
-    setToastMessage(msg);
-    setToastType(type);
-    setTimeout(() => {
-      setToastMessage(null);
-    }, 3500);
-  };
+  // Global Toast Feedback
+  const { showToast } = useToast();
 
   // 1. Initial Auth Token Retrieval
   useEffect(() => {
@@ -108,7 +114,7 @@ export default function ProviderProfilePage() {
       setUserData(me);
 
       if (me) {
-        setFormData({
+        const initialProfile = {
           name: me.name || "",
           phone: me.phone || "",
           base_address: me.base_address || "",
@@ -117,7 +123,14 @@ export default function ProviderProfilePage() {
           has_smartphone: Boolean(me.has_smartphone),
           is_available: Boolean(me.is_available),
           working_radius_km: Number(me.working_radius_km) || 3,
-        });
+        };
+        setFormData(initialProfile);
+        setInitialData(initialProfile);
+        setIsLocationDirty(false);
+
+        if (me.photo_url) {
+          setPhotoPreview(me.photo_url);
+        }
       }
 
       // Fetch /provider/dashboard
@@ -162,13 +175,20 @@ export default function ProviderProfilePage() {
     }
   }, [language, userData]);
 
-  // Sync localized name to formData
+  // Sync localized name to formData only on initial load or if user hasn't edited name
   useEffect(() => {
     const locName = getLocalizedName();
-    setFormData((prev) => ({
-      ...prev,
-      name: locName,
-    }));
+    setFormData((prev) => {
+      // Don't overwrite if user has actively modified the name
+      if (initialData && prev.name !== initialData.name) {
+        return prev;
+      }
+      return {
+        ...prev,
+        name: locName,
+      };
+    });
+    setInitialData((prev) => (prev ? { ...prev, name: locName } : null));
   }, [getLocalizedName]);
 
   // Handle Location from Google Maps
@@ -179,6 +199,7 @@ export default function ProviderProfilePage() {
       longitude: lng,
       base_address: address || prev.base_address,
     }));
+    setIsLocationDirty(true);
     setIsMapModalOpen(false);
     showToast(
       language === "bn"
@@ -187,17 +208,170 @@ export default function ProviderProfilePage() {
     );
   };
 
+  // Handle Profile Photo Selection & Instant Cloudinary Upload
+  const handlePhotoChange = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith("image/")) {
+      showToast(
+        language === "bn"
+          ? "অনুগ্রহ করে শুধু ছবি ফাইল (JPG, PNG, WebP) নির্বাচন করুন।"
+          : "Please select a valid image file (JPG, PNG, WebP).",
+        "error"
+      );
+      return;
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+      showToast(
+        language === "bn"
+          ? "ছবির সাইজ সর্বোচ্চ ৫ মেগাবাইট হতে পারবে।"
+          : "Image size must be less than 5MB.",
+        "error"
+      );
+      return;
+    }
+
+    // Set immediate preview
+    const localUrl = URL.createObjectURL(file);
+    setPhotoPreview(localUrl);
+    setIsUploadingPhoto(true);
+    setSavingStatusText(
+      language === "bn"
+        ? "ছবি ক্লাউডিনারিতে আপলোড হচ্ছে..."
+        : "Uploading profile photo to Cloudinary..."
+    );
+
+    try {
+      const uploadRes = await uploadProfilePhotoToCloudinary(file, token);
+      if (uploadRes?.secure_url) {
+        setUploadedPhotoUrl(uploadRes.secure_url);
+        setUploadedPhotoPublicId(uploadRes.public_id || "");
+        showToast(
+          p.photoUploadedSuccess ||
+            (language === "bn"
+              ? "প্রোফাইল ছবি সফলভাবে আপলোড হয়েছে! পরিবর্তন প্রয়োগ করতে 'সংরক্ষণ করুন' বাটনে চাপ দিন।"
+              : "Profile photo uploaded! Click 'Save Changes' to update your profile."),
+          "success"
+        );
+      }
+    } catch (err) {
+      console.error("Cloudinary upload failed:", err);
+      showToast(
+        err.message ||
+          (language === "bn"
+            ? "ক্লাউডিনারিতে ছবি আপলোড ব্যর্থ হয়েছে।"
+            : "Failed to upload photo to Cloudinary."),
+        "error"
+      );
+      // Revert preview back to existing photo
+      setPhotoPreview(userData?.photo_url || null);
+      setUploadedPhotoUrl("");
+      setUploadedPhotoPublicId("");
+    } finally {
+      setIsUploadingPhoto(false);
+      setSavingStatusText("");
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
+    }
+  };
+
   // Handle Form Submission -> PATCH /api/v1/provider/me/update_profile
+  // ONLY sends changed (dirty) fields so location 7-day limit errors are avoided
   const handleProfileSave = async (e) => {
     e.preventDefault();
     if (!token) return;
 
-    if (!formData.base_address || formData.base_address.trim().length < 5) {
+    if (isUploadingPhoto) {
+      showToast(
+        p.photoUploadingWait ||
+          (language === "bn"
+            ? "অনুগ্রহ করে অপেক্ষা করুন, ছবি এখনও ক্লাউডিনারিতে আপলোড হচ্ছে..."
+            : "Please wait, photo is still uploading to Cloudinary..."),
+        "warning"
+      );
+      return;
+    }
+
+    const payload = {};
+
+    // 1. Profile Photo (ONLY if newly uploaded to Cloudinary)
+    if (uploadedPhotoUrl) {
+      payload.photo_url = uploadedPhotoUrl;
+    }
+    if (uploadedPhotoPublicId) {
+      payload.photo_public_id = uploadedPhotoPublicId;
+    }
+
+    // 2. Name (ONLY if edited)
+    const trimmedName = (formData.name || "").trim();
+    const initialName = (initialData?.name || "").trim();
+    if (trimmedName && trimmedName !== initialName) {
+      const isBengali = /[\u0980-\u09FF]/.test(trimmedName) || language === "bn";
+      if (isBengali) {
+        payload.name_bn = trimmedName;
+      } else {
+        payload.name_en = trimmedName;
+      }
+      payload.name = trimmedName;
+    }
+
+    // 3. Location fields (ONLY if user explicitly picked or edited location)
+    if (isLocationDirty) {
+      if (!formData.base_address || formData.base_address.trim().length < 5) {
+        showToast(
+          language === "bn"
+            ? "ঠিকানা কমপক্ষে ৫ অক্ষরের হতে হবে।"
+            : "Base address must be at least 5 characters.",
+          "error"
+        );
+        return;
+      }
+      payload.base_address = formData.base_address.trim();
+      if (
+        formData.latitude != null &&
+        formData.longitude != null &&
+        formData.latitude !== 0 &&
+        formData.longitude !== 0
+      ) {
+        payload.latitude = Number(formData.latitude);
+        payload.longitude = Number(formData.longitude);
+      }
+    }
+
+    // 4. Working radius (ONLY if changed)
+    if (
+      initialData &&
+      Number(formData.working_radius_km) !== Number(initialData.working_radius_km)
+    ) {
+      payload.working_radius_km = Number(formData.working_radius_km);
+    }
+
+    // 5. Smartphone (ONLY if changed)
+    if (
+      initialData &&
+      Boolean(formData.has_smartphone) !== Boolean(initialData.has_smartphone)
+    ) {
+      payload.has_smartphone = Boolean(formData.has_smartphone);
+    }
+
+    // 6. Availability (ONLY if changed)
+    if (
+      initialData &&
+      Boolean(formData.is_available) !== Boolean(initialData.is_available)
+    ) {
+      payload.is_available = Boolean(formData.is_available);
+    }
+
+    // If no changes made, do not hit backend
+    if (Object.keys(payload).length === 0) {
       showToast(
         language === "bn"
-          ? "ঠিকানা কমপক্ষে ৫ অক্ষরের হতে হবে।"
-          : "Base address must be at least 5 characters.",
-        "error"
+          ? "সংরক্ষণ করার মতো কোনো পরিবর্তন পাওয়া যায়নি।"
+          : "No changes detected to save.",
+        "info"
       );
       return;
     }
@@ -205,25 +379,36 @@ export default function ProviderProfilePage() {
     setIsSaving(true);
 
     try {
-      const payload = {
-        base_address: formData.base_address.trim(),
-        has_smartphone: Boolean(formData.has_smartphone),
-        is_available: Boolean(formData.is_available),
-        working_radius_km: Number(formData.working_radius_km),
-      };
+      console.log("PATCH /provider/me/update_profile delta payload:", payload);
+      const res = await updateProviderProfile(payload, token, language);
+      const successMsg =
+        res?.message ||
+        p?.successSaved ||
+        (language === "bn"
+          ? "প্রোফাইল তথ্য সফলভাবে আপডেট হয়েছে!"
+          : "Profile details updated successfully!");
+      showToast(successMsg, "success");
 
-      // If location coordinates exist, pass them
-      if (formData.latitude && formData.longitude) {
-        payload.latitude = Number(formData.latitude);
-        payload.longitude = Number(formData.longitude);
+      // Update name in local storage if updated
+      if (payload.name) {
+        if (payload.name_bn) localStorage.setItem("user_name_bn", payload.name_bn);
+        if (payload.name_en) localStorage.setItem("user_name_en", payload.name_en);
+        localStorage.setItem("user_name", payload.name);
       }
 
-      await updateProviderProfile(payload, token, language);
-      showToast(p.successSaved);
-      loadProfileData();
+      setUploadedPhotoUrl("");
+      setUploadedPhotoPublicId("");
+      setIsLocationDirty(false);
+
+      await loadProfileData();
     } catch (err) {
       console.warn("Update profile response:", err);
-      showToast(err.message || "Failed to update profile", "error");
+      const errorMsg =
+        err?.message ||
+        (language === "bn"
+          ? "প্রোফাইল আপডেট ব্যর্থ হয়েছে।"
+          : "Failed to update profile.");
+      showToast(errorMsg, "error");
     } finally {
       setIsSaving(false);
     }
@@ -284,24 +469,6 @@ export default function ProviderProfilePage() {
 
   return (
     <div className="min-h-screen bg-[#F1F5F5] pb-24 pt-6 px-4 sm:px-6 lg:px-8 max-w-6xl mx-auto">
-      {/* Toast Notification */}
-      {toastMessage && (
-        <div
-          className={`fixed top-20 right-6 z-50 flex items-center gap-2 rounded-2xl px-5 py-3 text-xs font-semibold shadow-2xl border animate-in fade-in slide-in-from-top-4 ${
-            toastType === "error"
-              ? "bg-red-900 text-white border-red-700"
-              : "bg-slate-900 text-white border-slate-700"
-          }`}
-        >
-          {toastType === "error" ? (
-            <AlertCircle size={16} className="text-red-400 shrink-0" />
-          ) : (
-            <CheckCircle2 size={16} className="text-emerald-400 shrink-0" />
-          )}
-          <span>{toastMessage}</span>
-        </div>
-      )}
-
       {/* Back to Dashboard Navigation */}
       <div className="mb-4 flex items-center justify-between">
         <Link
@@ -330,22 +497,82 @@ export default function ProviderProfilePage() {
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-5">
           {/* Left: Avatar & Meta */}
           <div className="flex items-center gap-4 sm:gap-5">
-            <div className="relative h-18 w-18 sm:h-20 sm:w-20 shrink-0">
-              {userData?.photo_url ? (
-                <img
-                  src={userData.photo_url}
-                  alt={getLocalizedName()}
-                  className="h-full w-full rounded-2xl object-cover border-2 border-emerald-600/30 shadow-md bg-slate-100"
-                />
-              ) : (
-                <div className="h-full w-full rounded-2xl bg-gradient-to-tr from-[#00695C] to-emerald-400 flex items-center justify-center text-white text-2xl font-black shadow-md">
-                  {getLocalizedName() ? getLocalizedName().charAt(0) : "P"}
-                </div>
-              )}
+            {/* Hidden Input for Image Upload */}
+            <input
+              type="file"
+              ref={fileInputRef}
+              onChange={handlePhotoChange}
+              accept="image/*"
+              className="hidden"
+            />
+
+            {/* Clickable Profile Avatar with Upload Hover & Status */}
+            <div className="relative group shrink-0">
               <div
-                className={`absolute -bottom-1 -right-1 flex h-6 w-6 items-center justify-center rounded-full text-white ring-2 ring-white shadow-sm ${
+                onClick={() => !isUploadingPhoto && fileInputRef.current?.click()}
+                title={
+                  language === "bn"
+                    ? "প্রোফাইল ছবি পরিবর্তন করতে ক্লিক করুন"
+                    : "Click to change profile photo"
+                }
+                className={`relative h-20 w-20 sm:h-24 sm:w-24 rounded-2xl overflow-hidden border-2 ${
+                  uploadedPhotoUrl
+                    ? "border-amber-400 ring-4 ring-amber-100"
+                    : "border-emerald-600/30 shadow-md"
+                } bg-slate-100 cursor-pointer transition-all duration-200 hover:scale-[1.02] shadow-sm`}
+              >
+                {photoPreview ? (
+                  <img
+                    src={photoPreview}
+                    alt={getLocalizedName()}
+                    className="h-full w-full object-cover"
+                  />
+                ) : (
+                  <div className="h-full w-full bg-gradient-to-tr from-[#00695C] to-emerald-400 flex items-center justify-center text-white text-2xl font-black shadow-md">
+                    {getLocalizedName() ? getLocalizedName().charAt(0) : "P"}
+                  </div>
+                )}
+
+                {/* Uploading Spinner Overlay */}
+                {isUploadingPhoto ? (
+                  <div className="absolute inset-0 bg-slate-900/75 backdrop-blur-xs flex flex-col items-center justify-center text-white z-20">
+                    <Loader2 size={22} className="animate-spin text-white mb-1" />
+                    <span className="text-[10px] font-bold text-center px-1 leading-tight">
+                      {savingStatusText ||
+                        (language === "bn" ? "আপলোড হচ্ছে..." : "Uploading...")}
+                    </span>
+                  </div>
+                ) : (
+                  /* Hover overlay on desktop */
+                  <div className="absolute inset-0 bg-slate-900/40 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center text-white z-10">
+                    <Camera size={20} className="mb-0.5" />
+                    <span className="text-[10px] font-bold">
+                      {language === "bn" ? "পরিবর্তন" : "Change"}
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              {/* Camera Trigger Action Pill (Bottom Left Badge) */}
+              <button
+                type="button"
+                disabled={isUploadingPhoto}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  fileInputRef.current?.click();
+                }}
+                title={language === "bn" ? "ছবি নির্বাচন করুন" : "Pick new photo"}
+                className="absolute -bottom-1 -left-1 flex h-7 w-7 items-center justify-center rounded-xl bg-white text-slate-700 shadow-md border border-slate-200 hover:bg-slate-50 hover:text-[#00695C] transition-all cursor-pointer z-20"
+              >
+                <Camera size={14} className="text-[#00695C]" />
+              </button>
+
+              {/* Availability Indicator (Bottom Right Badge) */}
+              <div
+                className={`absolute -bottom-1 -right-1 flex h-6 w-6 items-center justify-center rounded-full text-white ring-2 ring-white shadow-sm z-20 ${
                   formData.is_available ? "bg-[#00695C]" : "bg-slate-400"
                 }`}
+                title={formData.is_available ? "Available" : "Busy"}
               >
                 <Check size={12} strokeWidth={3} />
               </div>
@@ -380,6 +607,18 @@ export default function ProviderProfilePage() {
                 )}
               </div>
 
+              {/* Unsaved uploaded photo status message */}
+              {uploadedPhotoUrl && (
+                <div className="mt-1 flex items-center gap-1.5 text-[11px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-2.5 py-1 rounded-lg w-fit">
+                  <span className="h-1.5 w-1.5 rounded-full bg-amber-500 animate-pulse" />
+                  <span>
+                    {language === "bn"
+                      ? "নতুন ছবি ক্লাউডিনারিতে আপলোড হয়েছে। প্রোফাইল আপডেট করতে নিচে 'পরিবর্তন সংরক্ষণ করুন' বাটনে চাপ দিন।"
+                      : "Photo uploaded to Cloudinary! Click 'Save Changes' below to update profile."}
+                  </span>
+                </div>
+              )}
+
               <div className="mt-1.5 flex flex-wrap items-center gap-3 text-xs text-slate-500 font-medium">
                 {userData?.base_address && (
                   <span className="flex items-center gap-1 text-slate-700">
@@ -393,6 +632,25 @@ export default function ProviderProfilePage() {
                   </span>
                 )}
               </div>
+
+              {/* Text button to change photo for direct accessibility */}
+              <button
+                type="button"
+                disabled={isUploadingPhoto}
+                onClick={() => fileInputRef.current?.click()}
+                className="mt-2 inline-flex items-center gap-1.5 text-xs font-bold text-[#00695C] hover:text-[#005247] hover:underline cursor-pointer disabled:opacity-50"
+              >
+                <Camera size={13} />
+                <span>
+                  {userData?.photo_url || photoPreview
+                    ? language === "bn"
+                      ? "প্রোফাইল ছবি পরিবর্তন করুন"
+                      : "Change Profile Photo"
+                    : language === "bn"
+                    ? "প্রোফাইল ছবি আপলোড করুন"
+                    : "Upload Profile Photo"}
+                </span>
+              </button>
             </div>
           </div>
         </div>
@@ -496,14 +754,17 @@ export default function ProviderProfilePage() {
               </label>
               <input
                 type="text"
-                disabled
                 value={formData.name}
-                className="w-full rounded-xl border border-slate-200 bg-slate-100 px-3.5 py-2.5 text-xs sm:text-sm text-slate-600 font-semibold cursor-not-allowed"
+                onChange={(e) =>
+                  setFormData((prev) => ({ ...prev, name: e.target.value }))
+                }
+                placeholder={p.fullName}
+                className="w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-xs sm:text-sm text-slate-900 font-semibold focus:border-[#00695C] focus:outline-none focus:ring-2 focus:ring-[#00695C]/20 transition-all"
               />
               <span className="mt-1 block text-[11px] text-slate-400">
                 {language === "bn"
-                  ? "নাম জাতীয় পরিচয়পত্র অনুযায়ী নির্ধারিত থাকে।"
-                  : "Name is authenticated against your official National ID."}
+                  ? "নাম পরিবর্তন করতে পারেন (সংরক্ষণ বাটনে চাপলে কার্যকর হবে)।"
+                  : "Edit your displayed provider name."}
               </span>
             </div>
 
@@ -551,11 +812,14 @@ export default function ProviderProfilePage() {
                 </div>
                 <input
                   type="text"
-                  required
                   value={formData.base_address}
-                  onChange={(e) =>
-                    setFormData({ ...formData, base_address: e.target.value })
-                  }
+                  onChange={(e) => {
+                    setFormData((prev) => ({
+                      ...prev,
+                      base_address: e.target.value,
+                    }));
+                    setIsLocationDirty(true);
+                  }}
                   placeholder={
                     p.baseAddressPlaceholder ||
                     (language === "bn"
@@ -582,14 +846,33 @@ export default function ProviderProfilePage() {
 
             {/* Selected Location Confirmation Card */}
             {formData.base_address && (
-              <div className="p-3.5 rounded-xl bg-white border border-emerald-200 flex items-start gap-3 shadow-2xs mt-2.5">
-                <div className="w-8 h-8 rounded-lg bg-emerald-100 text-[#00695C] flex items-center justify-center shrink-0 mt-0.5">
+              <div
+                className={`p-3.5 rounded-xl bg-white border ${
+                  isLocationDirty
+                    ? "border-amber-300 ring-2 ring-amber-100"
+                    : "border-emerald-200"
+                } flex items-start gap-3 shadow-2xs mt-2.5`}
+              >
+                <div
+                  className={`w-8 h-8 rounded-lg ${
+                    isLocationDirty
+                      ? "bg-amber-100 text-amber-700"
+                      : "bg-emerald-100 text-[#00695C]"
+                  } flex items-center justify-center shrink-0 mt-0.5`}
+                >
                   <CheckCircle2 size={18} />
                 </div>
-                <div className="min-w-0">
-                  <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
-                    {language === "bn" ? "নির্ধারিত অবস্থান" : "Confirmed Location"}
-                  </p>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+                      {language === "bn" ? "নির্ধারিত অবস্থান" : "Confirmed Location"}
+                    </p>
+                    {isLocationDirty && (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-bold text-amber-700 border border-amber-200">
+                        {language === "bn" ? "পরিবর্তিত অবস্থান" : "Modified"}
+                      </span>
+                    )}
+                  </div>
                   <p className="text-xs sm:text-sm font-bold text-slate-800 leading-snug break-words">
                     {formData.base_address}
                   </p>

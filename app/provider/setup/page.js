@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { useToast } from "@/lib/ToastContext";
 import {
   User,
   Wrench,
@@ -53,7 +54,7 @@ export default function ProviderSetupPage() {
   const [nidBack, setNidBack] = useState(null);
 
   // Notification Toast
-  const [toastMessage, setToastMessage] = useState(null);
+  const { showToast } = useToast();
   const [saving, setSaving] = useState(false);
 
   // Toggle Skill
@@ -80,13 +81,6 @@ export default function ProviderSetupPage() {
     }
   };
 
-  const showToast = (msg) => {
-    setToastMessage(msg);
-    setTimeout(() => {
-      setToastMessage(null);
-    }, 3000);
-  };
-
   const handleSaveDraft = () => {
     setSaving(true);
     setTimeout(() => {
@@ -111,14 +105,6 @@ export default function ProviderSetupPage() {
 
   return (
     <div className="min-h-screen pb-24 pt-6 px-4 sm:px-6 lg:px-8 max-w-6xl mx-auto">
-      {/* Toast Notification */}
-      {toastMessage && (
-        <div className="fixed top-20 right-6 z-50 flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-3 text-xs font-semibold text-white shadow-2xl border border-slate-700 animate-in fade-in slide-in-from-top-4">
-          <CheckCircle2 size={16} className="text-emerald-400" />
-          <span>{toastMessage}</span>
-        </div>
-      )}
-
       {/* Page Title & Subtitle */}
       <div className="mb-6">
         <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-[#00695C]">

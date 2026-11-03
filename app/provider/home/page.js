@@ -45,6 +45,7 @@ import {
   clearAuthSession,
 } from "@/lib/api";
 import { useLanguage } from "@/lib/LanguageContext";
+import { useToast } from "@/lib/ToastContext";
 import NidVerificationModal from "@/components/provider/NidVerificationModal";
 import AddSkillsModal from "@/components/provider/AddSkillsModal";
 import BookingDetailModal from "@/components/provider/BookingDetailModal";
@@ -92,17 +93,8 @@ export default function ProviderHomePage() {
   const [selectedBookingId, setSelectedBookingId] = useState(null);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
 
-  // Toast message
-  const [toastMessage, setToastMessage] = useState(null);
-  const [toastType, setToastType] = useState("success"); // 'success' | 'error'
-
-  const showToast = (msg, type = "success") => {
-    setToastMessage(msg);
-    setToastType(type);
-    setTimeout(() => {
-      setToastMessage(null);
-    }, 3500);
-  };
+  // Global Toast
+  const { showToast } = useToast();
 
   // 1. Initial Auth Check
   useEffect(() => {
@@ -335,24 +327,6 @@ export default function ProviderHomePage() {
 
   return (
     <div className="min-h-screen bg-[#F1F5F5] pb-24 pt-6 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto">
-      {/* Toast Notification */}
-      {toastMessage && (
-        <div
-          className={`fixed top-20 right-6 z-50 flex items-center gap-2 rounded-2xl px-5 py-3 text-xs font-semibold shadow-2xl border animate-in fade-in slide-in-from-top-4 ${
-            toastType === "error"
-              ? "bg-red-900 text-white border-red-700"
-              : "bg-slate-900 text-white border-slate-700"
-          }`}
-        >
-          {toastType === "error" ? (
-            <AlertCircle size={16} className="text-red-400 shrink-0" />
-          ) : (
-            <CheckCircle2 size={16} className="text-emerald-400 shrink-0" />
-          )}
-          <span>{toastMessage}</span>
-        </div>
-      )}
-
       {/* ============================================================== */}
       {/* 1. TOP HEADER & TECHNICIAN STATUS BAR                         */}
       {/* ============================================================== */}
