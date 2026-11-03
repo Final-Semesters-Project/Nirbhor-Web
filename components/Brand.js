@@ -1,8 +1,10 @@
 "use client";
 
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { ShieldCheck } from "lucide-react";
 import { useLanguage } from "@/lib/LanguageContext";
+import { getAccessToken } from "@/lib/auth";
 
 export default function Brand({
   compact = false,
@@ -12,6 +14,20 @@ export default function Brand({
 }) {
   const { t, language } = useLanguage();
   const isBn = language === "bn";
+  const [targetHref, setTargetHref] = useState(href);
+
+  useEffect(() => {
+    if (href === "/") {
+      const token = getAccessToken();
+      if (token) {
+        setTargetHref("/provider/home");
+      } else {
+        setTargetHref("/");
+      }
+    } else {
+      setTargetHref(href);
+    }
+  }, [href]);
 
   const content = (
     <div className={`flex items-center gap-2.5 ${className}`}>
@@ -58,9 +74,9 @@ export default function Brand({
     </div>
   );
 
-  if (href) {
+  if (targetHref) {
     return (
-      <Link href={href} className="inline-block">
+      <Link href={targetHref} className="inline-block">
         {content}
       </Link>
     );

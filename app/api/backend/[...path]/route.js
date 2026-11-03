@@ -55,6 +55,21 @@ async function proxyRequest(request, context) {
       }
     });
 
+    // Ensure clean Accept-Language header (bn or en) based on custom header, query param, or client header
+    const explicitLang =
+      request.headers.get("x-nirbhor-lang") ||
+      request.headers.get("x-lang") ||
+      originalUrl.searchParams.get("lang");
+
+    if (explicitLang) {
+      headers.set("accept-language", explicitLang.startsWith("bn") ? "bn" : "en");
+    } else {
+      const incomingLang = request.headers.get("accept-language");
+      if (incomingLang) {
+        headers.set("accept-language", incomingLang.startsWith("bn") ? "bn" : "en");
+      }
+    }
+
     // Add staging key on the server only
     headers.set("X-Staging-Key", STAGING_KEY);
 

@@ -407,6 +407,10 @@ export default function AuthScreen({ defaultMode = "register" }) {
       });
 
       saveAuthSession(response);
+      if (typeof window !== "undefined") {
+        if (regData.name_en?.trim()) localStorage.setItem("user_name_en", regData.name_en.trim());
+        if (regData.name_bn?.trim()) localStorage.setItem("user_name_bn", regData.name_bn.trim());
+      }
 
       setStatusMessage({
         type: "success",
@@ -473,6 +477,10 @@ export default function AuthScreen({ defaultMode = "register" }) {
       });
 
       saveAuthSession(response);
+      if (typeof window !== "undefined") {
+        if (regData.name_en?.trim()) localStorage.setItem("user_name_en", regData.name_en.trim());
+        if (regData.name_bn?.trim()) localStorage.setItem("user_name_bn", regData.name_bn.trim());
+      }
 
       setStatusMessage({
         type: "success",
