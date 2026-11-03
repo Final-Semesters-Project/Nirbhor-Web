@@ -15,6 +15,33 @@ const GOOGLE_MAPS_API_KEY =
   process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ||
   "AIzaSyCHBKvR2Wgc4eF53nYTlGYxULSQuVpb9t4";
 
+// Clean plus codes (e.g. "Q9HJ+23X, ") and format readable location name
+function sanitizeGoogleAddress(address, placeName = null) {
+  if (!address || typeof address !== "string") return address || "";
+
+  // Regular expression to match Plus Codes at the beginning of an address:
+  // e.g. "Q9HJ+23X, ", "8Q7C+9F, ", "7MV8Q9HJ+23X, "
+  const plusCodeRegex = /^[A-Z0-9]{2,8}\+[A-Z0-9]{2,5}(?:,\s*|\s+)/i;
+
+  let cleaned = address.trim();
+  if (plusCodeRegex.test(cleaned)) {
+    cleaned = cleaned.replace(plusCodeRegex, "").trim();
+  }
+
+  // If a place name was provided (e.g. "Agargaon Metro Rail Gate-C.") and it's not already in cleaned address,
+  // prepend it so the user sees the specific establishment/gate name they chose.
+  if (
+    placeName &&
+    typeof placeName === "string" &&
+    placeName.trim() &&
+    !cleaned.toLowerCase().includes(placeName.toLowerCase().trim())
+  ) {
+    cleaned = `${placeName.trim()}, ${cleaned}`;
+  }
+
+  return cleaned || address;
+}
+
 export default function GoogleMapPickerModal({
   isOpen,
   onClose,
@@ -45,7 +72,7 @@ export default function GoogleMapPickerModal({
     if (isOpen) {
       setCurrentLat(Number(initialLat) || 23.8103);
       setCurrentLng(Number(initialLng) || 90.4125);
-      setFormattedAddress(initialAddress || "");
+      setFormattedAddress(sanitizeGoogleAddress(initialAddress || ""));
       setMapError(null);
       setIsMapLoading(true);
     }
@@ -138,6 +165,7 @@ export default function GoogleMapPickerModal({
           autocomplete.addListener("place_changed", () => {
             const place = autocomplete.getPlace();
             if (place.geometry && place.geometry.location) {
+              // Exact pinpoint latitude and longitude are preserved
               const lat = Number(place.geometry.location.lat().toFixed(6));
               const lng = Number(place.geometry.location.lng().toFixed(6));
 
@@ -147,7 +175,19 @@ export default function GoogleMapPickerModal({
 
               setCurrentLat(lat);
               setCurrentLng(lng);
-              setFormattedAddress(place.formatted_address || place.name || "");
+
+              // Use clean human-readable address without plus codes
+              const searchVal = searchInputRef.current?.value?.trim();
+              const plusCodeRegex = /^[A-Z0-9]{2,8}\+[A-Z0-9]{2,5}/i;
+              let targetAddr = sanitizeGoogleAddress(place.formatted_address || place.name || "", place.name);
+
+              if (searchVal && !plusCodeRegex.test(searchVal)) {
+                if (searchVal.toLowerCase().includes(place.name?.toLowerCase() || "")) {
+                  targetAddr = searchVal;
+                }
+              }
+
+              setFormattedAddress(targetAddr);
             }
           });
         }
@@ -244,7 +284,16 @@ export default function GoogleMapPickerModal({
 
     geocoderObj.geocode({ location: { lat, lng } }, (results, status) => {
       if (status === "OK" && results && results[0]) {
-        setFormattedAddress(results[0].formatted_address);
+        let bestAddr = sanitizeGoogleAddress(results[0].formatted_address || "");
+
+        // If results[0] had only a plus code and became too short or empty, check results[1]
+        if (!bestAddr || bestAddr.length < 5) {
+          if (results[1] && results[1].formatted_address) {
+            bestAddr = sanitizeGoogleAddress(results[1].formatted_address);
+          }
+        }
+
+        setFormattedAddress(bestAddr || results[0].formatted_address);
       } else {
         setFormattedAddress(
           isBn

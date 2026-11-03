@@ -528,7 +528,7 @@ export default function ProviderProfilePage() {
                     className="h-full w-full object-cover"
                   />
                 ) : (
-                  <div className="h-full w-full bg-gradient-to-tr from-[#00695C] to-emerald-400 flex items-center justify-center text-white text-2xl font-black shadow-md">
+                  <div suppressHydrationWarning className="h-full w-full bg-gradient-to-tr from-[#00695C] to-emerald-400 flex items-center justify-center text-white text-2xl font-black shadow-md">
                     {getLocalizedName() ? getLocalizedName().charAt(0) : "P"}
                   </div>
                 )}
@@ -580,7 +580,7 @@ export default function ProviderProfilePage() {
 
             <div>
               <div className="flex flex-wrap items-center gap-2">
-                <h1 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
+                <h1 suppressHydrationWarning className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
                   {getLocalizedName()}
                 </h1>
 
