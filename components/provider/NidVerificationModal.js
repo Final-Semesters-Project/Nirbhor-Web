@@ -235,8 +235,12 @@ export default function NidVerificationModal({
         {/* Modal Header */}
         <div className="flex items-center justify-between border-b border-slate-100 px-6 py-5 bg-gradient-to-r from-emerald-50/50 to-white">
           <div className="flex items-center gap-3">
-            <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#00695C] text-white shadow-md shadow-[#00695C]/20">
-              <Shield size={22} />
+            <div className="relative h-11 w-11 shrink-0 overflow-hidden rounded-2xl shadow-md border border-slate-200">
+              <img
+                src="/images/logo.png"
+                alt="Nirbhor Logo"
+                className="h-full w-full object-cover"
+              />
             </div>
             <div>
               <h2 className="text-lg font-bold text-slate-900">

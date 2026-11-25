@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { User, ShieldCheck } from "lucide-react";
+import { User } from "lucide-react";
 import Brand from "@/components/Brand";
 import LanguageToggle from "@/components/LanguageToggle";
 import { useLanguage } from "@/lib/LanguageContext";
@@ -30,14 +30,6 @@ export default function Navbar() {
         <div className="flex items-center gap-2 sm:gap-3">
           {/* Global Language Toggle */}
           <LanguageToggle />
-
-          <div className="hidden sm:flex items-center gap-2 rounded-lg bg-emerald-50 px-2.5 py-1.5 text-xs font-semibold text-[#00695C] border border-emerald-200/60">
-            <span className="relative flex h-2 w-2">
-              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75"></span>
-              <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500"></span>
-            </span>
-            <span>{t.nav?.trustPortal || "Nirbhor Trust Portal"}</span>
-          </div>
 
           {/* Profile link: only visible when authenticated in provider dashboard */}
           {isLoggedIn && pathname.startsWith("/provider") && (

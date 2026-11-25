@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import { ShieldCheck } from "lucide-react";
 import { useLanguage } from "@/lib/LanguageContext";
 import { getAccessToken } from "@/lib/auth";
 
@@ -31,15 +30,17 @@ export default function Brand({
 
   const content = (
     <div className={`flex items-center gap-2.5 ${className}`}>
-      {/* Icon Shield Badge */}
+      {/* Official Brand Logo Image */}
       <div
-        className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl transition-transform hover:scale-105 ${
-          inverted
-            ? "border border-white/20 bg-white/10 text-white shadow-sm"
-            : "bg-[#00695C] text-white shadow-md shadow-[#00695C]/20"
+        className={`relative flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-xl transition-transform hover:scale-105 shadow-sm ${
+          inverted ? "ring-1 ring-white/20" : "border border-emerald-700/20"
         }`}
       >
-        <ShieldCheck size={22} strokeWidth={2.2} />
+        <img
+          src="/images/logo.png"
+          alt="Nirbhor Logo"
+          className="h-full w-full object-cover"
+        />
       </div>
 
       {!compact && (

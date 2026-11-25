@@ -473,7 +473,11 @@ export default function ProviderHomePage() {
         ) : verificationStatus === "not_initiated" ? (
           <div className="mt-5 rounded-2xl border border-emerald-200 bg-emerald-50/70 p-4 text-xs text-[#00695C] flex flex-col sm:flex-row sm:items-center justify-between gap-3 animate-in fade-in">
             <div className="flex items-start gap-3">
-              <ShieldCheck className="h-5 w-5 text-[#00695C] shrink-0 mt-0.5" />
+              <img
+                src="/images/logo.png"
+                alt="Nirbhor Logo"
+                className="h-6 w-6 rounded-md object-cover shrink-0 mt-0.5"
+              />
               <div>
                 <span className="font-bold text-slate-900 block text-sm">
                   {d.notInitiatedBadge}

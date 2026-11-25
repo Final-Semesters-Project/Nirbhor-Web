@@ -1093,8 +1093,12 @@ export default function ProviderProfilePage() {
           ) : (
             <div className="rounded-2xl bg-slate-50 border border-dashed border-slate-300 p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <div className="flex items-center gap-3">
-                <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-emerald-50 text-[#00695C] shrink-0">
-                  <Shield size={22} />
+                <div className="relative h-11 w-11 shrink-0 overflow-hidden rounded-2xl shadow-xs border border-slate-200">
+                  <img
+                    src="/images/logo.png"
+                    alt="Nirbhor Logo"
+                    className="h-full w-full object-cover"
+                  />
                 </div>
                 <div>
                   <p className="text-xs font-bold text-slate-800">

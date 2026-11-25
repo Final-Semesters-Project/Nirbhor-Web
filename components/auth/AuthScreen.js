@@ -549,12 +549,24 @@ export default function AuthScreen({ defaultMode = "register" }) {
           />
 
           <div className="relative z-10">
-            <div className="inline-flex items-center gap-2 rounded-xl bg-white/10 px-3.5 py-1.5 backdrop-blur-md border border-white/15 text-xs font-semibold tracking-wide text-emerald-100 shadow-xs">
-              <ShieldCheck size={16} className="text-emerald-300" />
-              <span>{t.hero?.badge || (isBn ? "নির্ভর ট্রাস্ট পোর্টাল • বিশ্বস্ত প্ল্যাটফর্ম" : "Nirbhor Trust Portal • Reliable Service Network")}</span>
+            {/* Project Logo & Branding */}
+            <div className="mb-6 flex items-center gap-3.5">
+              <img
+                src="/images/logo.png"
+                alt="Nirbhor Logo"
+                className="h-14 w-14 rounded-2xl object-cover shadow-lg border border-white/20"
+              />
+              <div>
+                <span className="text-xl sm:text-2xl font-black text-white tracking-tight block">
+                  {isBn ? "নির্ভর" : "Nirbhor"}
+                </span>
+                <span className="text-xs text-emerald-200 font-medium tracking-wide">
+                  Local Skill Exchange
+                </span>
+              </div>
             </div>
 
-            <h1 className="mt-6 text-2xl sm:text-3xl font-extrabold tracking-tight leading-tight">
+            <h1 className="mt-2 text-2xl sm:text-3xl font-extrabold tracking-tight leading-tight">
               {t.hero?.title || (isBn ? "বিশ্বস্ত দক্ষতার নেটওয়ার্কে যোগ দিন" : "Join the Trusted Skill Network")}
             </h1>
 
