@@ -36,10 +36,14 @@ import {
   fetchUserProfileMe,
   fetchProviderDashboard,
   updateProviderProfile,
+  updateProviderSmartphone,
+  updateProviderWorkingRadius,
+  removeProviderSkill,
   uploadProfilePhotoToCloudinary,
   getAccessToken,
   clearAuthSession,
 } from "@/lib/api";
+import { pauseAuthSessionForLogout } from "@/lib/auth";
 import { useLanguage } from "@/lib/LanguageContext";
 import { useToast } from "@/lib/ToastContext";
 import GoogleMapPickerModal from "@/components/GoogleMapPickerModal";
@@ -56,6 +60,8 @@ export default function ProviderProfilePage() {
   const [token, setToken] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [isUpdatingSmartphone, setIsUpdatingSmartphone] = useState(false);
+  const [isUpdatingRadius, setIsUpdatingRadius] = useState(false);
 
   // User Profile & Dashboard Data
   const [userData, setUserData] = useState(null);
@@ -267,6 +273,71 @@ export default function ProviderProfilePage() {
     }
   };
 
+  // Handle Smartphone Status Toggle -> PATCH /api/v1/provider/me/update_profile { has_smartphone }
+  const handleSmartphoneChange = async (nextValue) => {
+    if (!token || isUpdatingSmartphone) return;
+    const prevValue = Boolean(formData.has_smartphone);
+    if (prevValue === Boolean(nextValue)) return;
+
+    setFormData((prev) => ({ ...prev, has_smartphone: Boolean(nextValue) }));
+    setIsUpdatingSmartphone(true);
+
+    try {
+      const res = await updateProviderSmartphone(Boolean(nextValue), token, language);
+      setInitialData((prev) =>
+        prev ? { ...prev, has_smartphone: Boolean(nextValue) } : prev
+      );
+      showToast(
+        res?.message ||
+          (language === "bn"
+            ? "স্মার্টফোনের তথ্য সফলভাবে আপডেট হয়েছে!"
+            : "Smartphone status updated successfully!"),
+        "success"
+      );
+    } catch (err) {
+      console.error("Failed to update smartphone status:", err);
+      setFormData((prev) => ({ ...prev, has_smartphone: prevValue }));
+      showToast(
+        err?.message ||
+          (language === "bn"
+            ? "স্মার্টফোনের তথ্য আপডেট ব্যর্থ হয়েছে।"
+            : "Failed to update smartphone status."),
+        "error"
+      );
+    } finally {
+      setIsUpdatingSmartphone(false);
+    }
+  };
+
+  // Handle Working Radius Slider -> PATCH /api/v1/provider/me/update_profile { working_radius_km }
+  const handleRadiusChange = async (newVal) => {
+    if (!token || isUpdatingRadius) return;
+    const previous = initialData?.working_radius_km ?? formData.working_radius_km;
+    const clamped = Math.min(Math.max(Number(newVal), 1), 5);
+    if (Number(previous) === clamped) return;
+
+    setFormData((prev) => ({ ...prev, working_radius_km: clamped }));
+    setIsUpdatingRadius(true);
+
+    try {
+      await updateProviderWorkingRadius(clamped, token, language);
+      setInitialData((prev) =>
+        prev ? { ...prev, working_radius_km: clamped } : prev
+      );
+      showToast(
+        language === "bn"
+          ? `কাজের পরিধি ${clamped.toLocaleString("bn-BD")} কিমিতে আপডেট করা হয়েছে`
+          : `Working radius updated to ${clamped} KM`
+      );
+    } catch (err) {
+      console.warn("Radius update response:", err?.message || err);
+      setFormData((prev) => ({ ...prev, working_radius_km: previous }));
+      showToast(err.message || "Radius update limit reached", "error");
+    } finally {
+      setIsUpdatingRadius(false);
+    }
+  };
+
   // Handle Form Submission -> PATCH /api/v1/provider/me/update_profile
   // ONLY sends changed (dirty) fields so location 7-day limit errors are avoided
   const handleProfileSave = async (e) => {
@@ -404,9 +475,22 @@ export default function ProviderProfilePage() {
     }
   };
 
-  // Handle Logout
+  // Handle Remove Skill -> DELETE /api/v1/provider/me/remove_skill?skill_id={id}
+  const handleRemoveSkill = async (skillId) => {
+    try {
+      await removeProviderSkill(skillId, token, language);
+      showToast(d.skillRemoved);
+      const dash = await fetchProviderDashboard(token, language);
+      setDashboardData(dash);
+    } catch (err) {
+      console.error("Failed to remove skill:", err);
+      showToast(err.message || "Failed to remove skill", "error");
+    }
+  };
+
+  // Handle Logout (preserve access_token & refresh_token in localStorage for auto-login)
   const handleLogout = () => {
-    clearAuthSession();
+    pauseAuthSessionForLogout();
     showToast(
       language === "bn"
         ? "সফলভাবে লগআউট সম্পন্ন হয়েছে।"
@@ -548,16 +632,6 @@ export default function ProviderProfilePage() {
               >
                 <Camera size={14} className="text-[#00695C]" />
               </button>
-
-              {/* Availability Indicator (Bottom Right Badge) */}
-              <div
-                className={`absolute -bottom-1 -right-1 flex h-6 w-6 items-center justify-center rounded-full text-white ring-2 ring-white shadow-sm z-20 ${
-                  formData.is_available ? "bg-[#00695C]" : "bg-slate-400"
-                }`}
-                title={formData.is_available ? "Available" : "Busy"}
-              >
-                <Check size={12} strokeWidth={3} />
-              </div>
             </div>
 
             <div>
@@ -863,68 +937,41 @@ export default function ProviderProfilePage() {
             )}
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 pt-2">
-            {/* Availability Toggle */}
-            <div className="rounded-2xl border border-slate-200 bg-slate-50/60 p-4 flex items-center justify-between">
-              <div>
-                <span className="block text-xs font-bold text-slate-800">
-                  {p.availability}
-                </span>
-                <span className="text-[11px] text-slate-500">
-                  {formData.is_available ? p.availableForJobs : p.currentlyBusy}
-                </span>
-              </div>
+          {/* Smartphone Radio */}
+          <div className="rounded-2xl border border-slate-200 bg-slate-50/60 p-4 flex items-center justify-between">
+            <div>
+              <span className="block text-xs font-bold text-slate-800">
+                {p.hasSmartphone}
+              </span>
+              <span className="text-[11px] text-slate-500">
+                {formData.has_smartphone ? c.yes : c.no}
+              </span>
+            </div>
+            <div className="flex items-center gap-3">
               <button
                 type="button"
-                onClick={() =>
-                  setFormData({ ...formData, is_available: !formData.is_available })
-                }
-                className={`relative inline-flex h-7 w-12 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                  formData.is_available ? "bg-[#00695C]" : "bg-slate-300"
+                disabled={isUpdatingSmartphone}
+                onClick={() => handleSmartphoneChange(true)}
+                className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer disabled:opacity-60 ${
+                  formData.has_smartphone
+                    ? "bg-[#00695C] text-white shadow-xs"
+                    : "bg-white border border-slate-200 text-slate-600"
                 }`}
               >
-                <span
-                  className={`pointer-events-none inline-block h-6 w-6 transform rounded-full bg-white shadow-md ring-0 transition duration-200 ease-in-out ${
-                    formData.is_available ? "translate-x-5" : "translate-x-0"
-                  }`}
-                />
+                {c.yes}
               </button>
-            </div>
-
-            {/* Smartphone Radio */}
-            <div className="rounded-2xl border border-slate-200 bg-slate-50/60 p-4 flex items-center justify-between">
-              <div>
-                <span className="block text-xs font-bold text-slate-800">
-                  {p.hasSmartphone}
-                </span>
-                <span className="text-[11px] text-slate-500">
-                  {formData.has_smartphone ? c.yes : c.no}
-                </span>
-              </div>
-              <div className="flex items-center gap-3">
-                <button
-                  type="button"
-                  onClick={() => setFormData({ ...formData, has_smartphone: true })}
-                  className={`px-3 py-1 rounded-lg text-xs font-bold transition-all ${
-                    formData.has_smartphone
-                      ? "bg-[#00695C] text-white shadow-xs"
-                      : "bg-white border border-slate-200 text-slate-600"
-                  }`}
-                >
-                  {c.yes}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setFormData({ ...formData, has_smartphone: false })}
-                  className={`px-3 py-1 rounded-lg text-xs font-bold transition-all ${
-                    !formData.has_smartphone
-                      ? "bg-[#00695C] text-white shadow-xs"
-                      : "bg-white border border-slate-200 text-slate-600"
-                  }`}
-                >
-                  {c.no}
-                </button>
-              </div>
+              <button
+                type="button"
+                disabled={isUpdatingSmartphone}
+                onClick={() => handleSmartphoneChange(false)}
+                className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer disabled:opacity-60 ${
+                  !formData.has_smartphone
+                    ? "bg-[#00695C] text-white shadow-xs"
+                    : "bg-white border border-slate-200 text-slate-600"
+                }`}
+              >
+                {c.no}
+              </button>
             </div>
           </div>
 
@@ -948,13 +995,9 @@ export default function ProviderProfilePage() {
               max="5"
               step="1"
               value={formData.working_radius_km}
-              onChange={(e) =>
-                setFormData({
-                  ...formData,
-                  working_radius_km: Number(e.target.value),
-                })
-              }
-              className="w-full accent-[#00695C] cursor-pointer"
+              disabled={isUpdatingRadius}
+              onChange={(e) => handleRadiusChange(e.target.value)}
+              className="w-full accent-[#00695C] cursor-pointer disabled:opacity-60"
             />
 
             <div className="flex justify-between text-[11px] text-slate-400 font-medium">
@@ -964,6 +1007,27 @@ export default function ProviderProfilePage() {
             </div>
           </div>
         </section>
+
+        {/* Submit Save Button */}
+        <div className="flex justify-end">
+          <button
+            type="submit"
+            disabled={isSaving}
+            className="w-full sm:w-auto inline-flex items-center justify-center gap-2 rounded-2xl bg-[#00695C] px-8 py-3 text-xs sm:text-sm font-bold text-white shadow-md shadow-[#00695C]/25 hover:bg-[#005247] transition-all cursor-pointer disabled:opacity-50"
+          >
+            {isSaving ? (
+              <>
+                <Loader2 size={16} className="animate-spin" />
+                <span>{p.saving}</span>
+              </>
+            ) : (
+              <>
+                <Save size={16} />
+                <span>{p.saveChanges}</span>
+              </>
+            )}
+          </button>
+        </div>
 
         {/* NID Verification Status Box & Uploaded Images Display */}
         <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm space-y-4">
@@ -996,14 +1060,15 @@ export default function ProviderProfilePage() {
               ) : null}
             </div>
 
-            {/* Action: Lock badge only AFTER review (approved), or Change NID button before that if already uploaded */}
+            {/* Action: Lock badge after approval, hide Change NID while under review (pending) */}
             <div>
               {verificationStatus === "approved" ? (
                 <div className="inline-flex items-center gap-1.5 rounded-xl bg-slate-100 border border-slate-200 px-3.5 py-2 text-xs font-bold text-slate-500 shadow-2xs select-none">
                   <Lock size={14} className="text-slate-400" />
                   <span>{language === "bn" ? "লক করা আছে" : "Locked"}</span>
                 </div>
-              ) : userData?.nid_url_front || userData?.nid_url_back ? (
+              ) : verificationStatus !== "pending" &&
+                (userData?.nid_url_front || userData?.nid_url_back) ? (
                 <button
                   type="button"
                   onClick={() => setIsNidModalOpen(true)}
@@ -1152,10 +1217,18 @@ export default function ProviderProfilePage() {
               {dashboardData.skills.map((skill) => (
                 <div
                   key={skill.id}
-                  className="flex items-center gap-1.5 rounded-2xl border border-slate-200 bg-slate-50/70 px-3 py-1.5 text-xs font-semibold text-slate-800"
+                  className="group flex items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50/70 px-3.5 py-2 text-xs font-semibold text-slate-800 transition-all hover:border-emerald-300 hover:bg-emerald-50/30"
                 >
                   <Wrench size={13} className="text-[#00695C]" />
                   <span>{skill.name}</span>
+                  <button
+                    type="button"
+                    onClick={() => handleRemoveSkill(skill.id)}
+                    title={c.cancel}
+                    className="text-slate-400 hover:text-red-500 transition-colors cursor-pointer"
+                  >
+                    <X size={14} />
+                  </button>
                 </div>
               ))}
             </div>
@@ -1163,27 +1236,6 @@ export default function ProviderProfilePage() {
             <p className="text-xs text-slate-400">{d.noSkillsYet}</p>
           )}
         </section>
-
-        {/* Submit Save Button */}
-        <div className="flex justify-end pt-2">
-          <button
-            type="submit"
-            disabled={isSaving}
-            className="w-full sm:w-auto inline-flex items-center justify-center gap-2 rounded-2xl bg-[#00695C] px-8 py-3 text-xs sm:text-sm font-bold text-white shadow-md shadow-[#00695C]/25 hover:bg-[#005247] transition-all cursor-pointer disabled:opacity-50"
-          >
-            {isSaving ? (
-              <>
-                <Loader2 size={16} className="animate-spin" />
-                <span>{p.saving}</span>
-              </>
-            ) : (
-              <>
-                <Save size={16} />
-                <span>{p.saveChanges}</span>
-              </>
-            )}
-          </button>
-        </div>
       </form>
 
       {/* ============================================================== */}

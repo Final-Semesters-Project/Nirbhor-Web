@@ -19,6 +19,7 @@ export default function Navbar() {
   }, [pathname]);
 
   const brandHref = isLoggedIn || pathname.startsWith("/provider") ? "/provider/home" : "/";
+  const isProfileActive = pathname.startsWith("/provider/profile");
 
   return (
     <header className="sticky top-0 z-50 border-b border-slate-200/90 bg-white/95 backdrop-blur-md shadow-xs">
@@ -35,10 +36,18 @@ export default function Navbar() {
           {isLoggedIn && pathname.startsWith("/provider") && (
             <Link
               href="/provider/profile"
-              className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 shadow-xs transition-all hover:bg-slate-50 hover:text-slate-900"
+              aria-current={isProfileActive ? "page" : undefined}
+              className={`flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-semibold transition-all ${
+                isProfileActive
+                  ? "border-[#00695C] bg-[#00695C] text-white shadow-sm"
+                  : "border-slate-200 bg-white text-slate-700 shadow-xs hover:bg-slate-50 hover:text-slate-900"
+              }`}
               title="Profile"
             >
-              <User size={13} className="text-[#00695C]" />
+              <User
+                size={13}
+                className={isProfileActive ? "text-white" : "text-[#00695C]"}
+              />
               <span>{t.nav?.profile || "Profile"}</span>
             </Link>
           )}

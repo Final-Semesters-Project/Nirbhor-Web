@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -31,12 +31,20 @@ import {
 } from "lucide-react";
 import { useLanguage } from "@/lib/LanguageContext";
 import { useToast } from "@/lib/ToastContext";
-import { saveAuthSession } from "@/lib/auth";
+import {
+  saveAuthSession,
+  getAccessToken,
+  getRefreshToken,
+  restoreAuthSession,
+  clearAuthSession,
+  isTokenExpired,
+} from "@/lib/auth";
 import {
   registerProviderAccount,
   loginUser,
   fetchCategories,
   fetchSkillsByCategory,
+  fetchUserProfileMe,
   FALLBACK_CATEGORIES,
   FALLBACK_SKILLS_BY_CATEGORY,
 } from "@/lib/api";
@@ -50,6 +58,72 @@ export default function AuthScreen({ defaultMode = "register" }) {
 
   // Tab mode: 'register' or 'login'
   const [mode, setMode] = useState(defaultMode);
+  const [isCheckingSession, setIsCheckingSession] = useState(true);
+
+  // Shared helper: restore localStorage tokens and redirect with toast if session is valid
+  const tryAutoRedirect = useCallback(
+    async (isCancelledRef = { current: false }) => {
+      restoreAuthSession();
+      const accessToken = getAccessToken();
+      const refreshToken = getRefreshToken();
+
+      if (!accessToken || !refreshToken || isTokenExpired(accessToken)) {
+        if (accessToken && isTokenExpired(accessToken)) {
+          clearAuthSession();
+        }
+        return false;
+      }
+
+      const redirectMsg = isBn ? "রিডাইরেক্ট হচ্ছে..." : "Redirecting...";
+
+      try {
+        await fetchUserProfileMe(accessToken);
+        if (!isCancelledRef.current) {
+          showToast(redirectMsg, "success", 1800);
+          router.replace("/provider/profile");
+        }
+        return true;
+      } catch (err) {
+        if (err?.status === 401 || err?.status === 403) {
+          clearAuthSession();
+          return false;
+        }
+        if (!isCancelledRef.current) {
+          showToast(redirectMsg, "success", 1800);
+          router.replace("/provider/profile");
+        }
+        return true;
+      }
+    },
+    [router, showToast, isBn]
+  );
+
+  // Auto-login redirect on mount if valid access_token & refresh_token exist in localStorage
+  useEffect(() => {
+    const isCancelledRef = { current: false };
+
+    async function checkExistingSession() {
+      if (
+        typeof window !== "undefined" &&
+        sessionStorage.getItem("manual_logout") === "1"
+      ) {
+        if (!isCancelledRef.current) {
+          setIsCheckingSession(false);
+        }
+        return;
+      }
+
+      const redirected = await tryAutoRedirect(isCancelledRef);
+      if (!redirected && !isCancelledRef.current) {
+        setIsCheckingSession(false);
+      }
+    }
+
+    checkExistingSession();
+    return () => {
+      isCancelledRef.current = true;
+    };
+  }, [tryAutoRedirect]);
 
   // 3-Step Wizard Navigation:
   // Step 1: Personal & Account Info
@@ -227,7 +301,6 @@ export default function AuthScreen({ defaultMode = "register" }) {
   const [loginData, setLoginData] = useState({
     username: "",
     password: "",
-    rememberMe: false,
   });
 
   // UI state
@@ -529,6 +602,19 @@ export default function AuthScreen({ defaultMode = "register" }) {
     ((regData.working_radius_km - 1) / (5 - 1)) * 100
   );
 
+  if (isCheckingSession) {
+    return (
+      <div className="min-h-[70vh] flex items-center justify-center px-4">
+        <div className="flex flex-col items-center gap-3">
+          <div className="h-9 w-9 animate-spin rounded-full border-4 border-[#00695C] border-t-transparent" />
+          <p className="text-xs font-semibold text-slate-500">
+            {isBn ? "অ্যাকাউন্ট যাচাই করা হচ্ছে..." : "Checking saved session..."}
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="py-6 sm:py-10 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto flex items-center justify-center">
       {/* Enterprise Shell Card */}
@@ -645,25 +731,29 @@ export default function AuthScreen({ defaultMode = "register" }) {
                   setMode("register");
                   setStatusMessage(null);
                 }}
-                className={`flex-1 rounded-xl py-2.5 text-xs sm:text-sm font-bold transition-all cursor-pointer ${
-                  mode === "register"
-                    ? "bg-[#00695C] text-white shadow-sm"
-                    : "text-slate-600 hover:text-slate-900"
-                }`}
+                className={`flex-1 rounded-xl py-2.5 text-xs sm:text-sm font-bold transition-all cursor-pointer ${mode === "register"
+                  ? "bg-[#00695C] text-white shadow-sm"
+                  : "text-slate-600 hover:text-slate-900"
+                  }`}
               >
                 {t.auth?.tabRegister || (isBn ? "নিবন্ধন করুন" : "Create Account")}
               </button>
               <button
                 type="button"
-                onClick={() => {
-                  setMode("login");
+                onClick={async () => {
                   setStatusMessage(null);
+                  if (typeof window !== "undefined") {
+                    sessionStorage.removeItem("manual_logout");
+                  }
+                  const redirected = await tryAutoRedirect();
+                  if (!redirected) {
+                    setMode("login");
+                  }
                 }}
-                className={`flex-1 rounded-xl py-2.5 text-xs sm:text-sm font-bold transition-all cursor-pointer ${
-                  mode === "login"
-                    ? "bg-[#00695C] text-white shadow-sm"
-                    : "text-slate-600 hover:text-slate-900"
-                }`}
+                className={`flex-1 rounded-xl py-2.5 text-xs sm:text-sm font-bold transition-all cursor-pointer ${mode === "login"
+                  ? "bg-[#00695C] text-white shadow-sm"
+                  : "text-slate-600 hover:text-slate-900"
+                  }`}
               >
                 {t.auth?.tabLogin || (isBn ? "লগইন করুন" : "Log In")}
               </button>
@@ -672,11 +762,10 @@ export default function AuthScreen({ defaultMode = "register" }) {
             {/* Status Feedback Message */}
             {statusMessage && (
               <div
-                className={`mb-6 flex items-start gap-3 rounded-2xl p-4 text-xs sm:text-sm font-medium border transition-all animate-in fade-in slide-in-from-top-2 ${
-                  statusMessage.type === "success"
-                    ? "bg-emerald-50 text-emerald-900 border-emerald-300"
-                    : "bg-rose-50 text-rose-900 border-rose-300"
-                }`}
+                className={`mb-6 flex items-start gap-3 rounded-2xl p-4 text-xs sm:text-sm font-medium border transition-all animate-in fade-in slide-in-from-top-2 ${statusMessage.type === "success"
+                  ? "bg-emerald-50 text-emerald-900 border-emerald-300"
+                  : "bg-rose-50 text-rose-900 border-rose-300"
+                  }`}
               >
                 {statusMessage.type === "success" ? (
                   <CheckCircle2 size={18} className="text-emerald-600 shrink-0 mt-0.5" />
@@ -702,22 +791,20 @@ export default function AuthScreen({ defaultMode = "register" }) {
                         setRegisterStep(1);
                         setStatusMessage(null);
                       }}
-                      className={`flex items-center gap-2 cursor-pointer transition-colors ${
-                        registerStep === 1
-                          ? "text-[#00695C] font-extrabold"
-                          : registerStep > 1
+                      className={`flex items-center gap-2 cursor-pointer transition-colors ${registerStep === 1
+                        ? "text-[#00695C] font-extrabold"
+                        : registerStep > 1
                           ? "text-emerald-700 font-bold"
                           : "text-slate-400 font-semibold"
-                      }`}
+                        }`}
                     >
                       <span
-                        className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold transition-all ${
-                          registerStep === 1
-                            ? "bg-[#00695C] text-white shadow-xs"
-                            : registerStep > 1
+                        className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold transition-all ${registerStep === 1
+                          ? "bg-[#00695C] text-white shadow-xs"
+                          : registerStep > 1
                             ? "bg-emerald-100 text-[#00695C]"
                             : "bg-slate-100 text-slate-400"
-                        }`}
+                          }`}
                       >
                         {registerStep > 1 ? <Check size={14} strokeWidth={3} /> : "1"}
                       </span>
@@ -727,9 +814,8 @@ export default function AuthScreen({ defaultMode = "register" }) {
                     </button>
 
                     <div
-                      className={`flex-1 h-0.5 mx-1 transition-colors ${
-                        registerStep >= 2 ? "bg-emerald-300" : "bg-slate-200"
-                      }`}
+                      className={`flex-1 h-0.5 mx-1 transition-colors ${registerStep >= 2 ? "bg-emerald-300" : "bg-slate-200"
+                        }`}
                     />
 
                     {/* Step 2 Chip */}
@@ -746,22 +832,20 @@ export default function AuthScreen({ defaultMode = "register" }) {
                           setStatusMessage(null);
                         }
                       }}
-                      className={`flex items-center gap-2 transition-colors ${
-                        registerStep === 2
-                          ? "text-[#00695C] font-extrabold cursor-pointer"
-                          : registerStep > 2
+                      className={`flex items-center gap-2 transition-colors ${registerStep === 2
+                        ? "text-[#00695C] font-extrabold cursor-pointer"
+                        : registerStep > 2
                           ? "text-emerald-700 font-bold cursor-pointer"
                           : "text-slate-400 font-semibold"
-                      }`}
+                        }`}
                     >
                       <span
-                        className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold transition-all ${
-                          registerStep === 2
-                            ? "bg-[#00695C] text-white shadow-xs"
-                            : registerStep > 2
+                        className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold transition-all ${registerStep === 2
+                          ? "bg-[#00695C] text-white shadow-xs"
+                          : registerStep > 2
                             ? "bg-emerald-100 text-[#00695C]"
                             : "bg-slate-100 text-slate-400"
-                        }`}
+                          }`}
                       >
                         {registerStep > 2 ? <Check size={14} strokeWidth={3} /> : "2"}
                       </span>
@@ -771,25 +855,22 @@ export default function AuthScreen({ defaultMode = "register" }) {
                     </button>
 
                     <div
-                      className={`flex-1 h-0.5 mx-1 transition-colors ${
-                        registerStep === 3 ? "bg-emerald-300" : "bg-slate-200"
-                      }`}
+                      className={`flex-1 h-0.5 mx-1 transition-colors ${registerStep === 3 ? "bg-emerald-300" : "bg-slate-200"
+                        }`}
                     />
 
                     {/* Step 3 Chip */}
                     <div
-                      className={`flex items-center gap-2 ${
-                        registerStep === 3
-                          ? "text-[#00695C] font-extrabold"
-                          : "text-slate-400 font-semibold"
-                      }`}
+                      className={`flex items-center gap-2 ${registerStep === 3
+                        ? "text-[#00695C] font-extrabold"
+                        : "text-slate-400 font-semibold"
+                        }`}
                     >
                       <span
-                        className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold ${
-                          registerStep === 3
-                            ? "bg-[#00695C] text-white shadow-xs"
-                            : "bg-slate-100 text-slate-400"
-                        }`}
+                        className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold ${registerStep === 3
+                          ? "bg-[#00695C] text-white shadow-xs"
+                          : "bg-slate-100 text-slate-400"
+                          }`}
                       >
                         3
                       </span>
@@ -804,15 +885,15 @@ export default function AuthScreen({ defaultMode = "register" }) {
                     {registerStep === 1
                       ? t.register?.step1Title || (isBn ? "ব্যক্তিগত তথ্য" : "Personal Information")
                       : registerStep === 2
-                      ? t.register?.step2Title || (isBn ? "কাজের দক্ষতা ও ক্ষেত্র" : "Skills & Specialization")
-                      : t.register?.step3Title || (isBn ? "অবস্থান ও কাজের পরিধি" : "Service Location & Radius")}
+                        ? t.register?.step2Title || (isBn ? "কাজের দক্ষতা ও ক্ষেত্র" : "Skills & Specialization")
+                        : t.register?.step3Title || (isBn ? "অবস্থান ও কাজের পরিধি" : "Service Location & Radius")}
                   </h2>
                   <p className="mt-1 text-xs sm:text-sm text-slate-500 font-medium">
                     {registerStep === 1
                       ? t.register?.step1Subtitle || (isBn ? "আপনার সঠিক নাম ও যোগাযোগ নম্বর দিয়ে অ্যাকাউন্ট শুরু করুন।" : "Enter your full name and contact number to start.")
                       : registerStep === 2
-                      ? t.register?.step2Subtitle || (isBn ? "ক্যাটাগরি নির্বাচন করে আপনার কাজের দক্ষতাসমূহ যুক্ত করুন।" : "Select categories and choose the service skills you provide.")
-                      : t.register?.step3Subtitle || (isBn ? "ম্যাপে কর্মস্থল পিন করুন এবং সেবার দূরত্ব নির্ধারণ করুন।" : "Pin your base address on Google Maps and set your coverage radius.")}
+                        ? t.register?.step2Subtitle || (isBn ? "ক্যাটাগরি নির্বাচন করে আপনার কাজের দক্ষতাসমূহ যুক্ত করুন।" : "Select categories and choose the service skills you provide.")
+                        : t.register?.step3Subtitle || (isBn ? "ম্যাপে কর্মস্থল পিন করুন এবং সেবার দূরত্ব নির্ধারণ করুন।" : "Pin your base address on Google Maps and set your coverage radius.")}
                   </p>
                 </div>
 
@@ -972,22 +1053,20 @@ export default function AuthScreen({ defaultMode = "register" }) {
                             <button
                               type="button"
                               onClick={() => setRegData({ ...regData, has_smartphone: true })}
-                              className={`flex-1 rounded-lg py-2 text-xs sm:text-sm font-bold transition-all cursor-pointer ${
-                                regData.has_smartphone
-                                  ? "bg-[#00695C] text-white shadow-xs"
-                                  : "text-slate-600 hover:text-slate-900"
-                              }`}
+                              className={`flex-1 rounded-lg py-2 text-xs sm:text-sm font-bold transition-all cursor-pointer ${regData.has_smartphone
+                                ? "bg-[#00695C] text-white shadow-xs"
+                                : "text-slate-600 hover:text-slate-900"
+                                }`}
                             >
                               {t.register?.smartphoneYes || (isBn ? "হ্যাঁ" : "Yes")}
                             </button>
                             <button
                               type="button"
                               onClick={() => setRegData({ ...regData, has_smartphone: false })}
-                              className={`flex-1 rounded-lg py-2 text-xs sm:text-sm font-bold transition-all cursor-pointer ${
-                                !regData.has_smartphone
-                                  ? "bg-[#00695C] text-white shadow-xs"
-                                  : "text-slate-600 hover:text-slate-900"
-                              }`}
+                              className={`flex-1 rounded-lg py-2 text-xs sm:text-sm font-bold transition-all cursor-pointer ${!regData.has_smartphone
+                                ? "bg-[#00695C] text-white shadow-xs"
+                                : "text-slate-600 hover:text-slate-900"
+                                }`}
                             >
                               {t.register?.smartphoneNo || (isBn ? "না" : "No")}
                             </button>
@@ -1056,32 +1135,29 @@ export default function AuthScreen({ defaultMode = "register" }) {
                               key={cat.id}
                               type="button"
                               onClick={() => toggleCategory(cat.id)}
-                              className={`group relative flex items-center justify-between p-3.5 rounded-2xl border text-left transition-all cursor-pointer ${
-                                isExpanded
-                                  ? "border-[#00695C] bg-white ring-2 ring-[#00695C]/20 shadow-sm"
-                                  : selectedCountInCat > 0
+                              className={`group relative flex items-center justify-between p-3.5 rounded-2xl border text-left transition-all cursor-pointer ${isExpanded
+                                ? "border-[#00695C] bg-white ring-2 ring-[#00695C]/20 shadow-sm"
+                                : selectedCountInCat > 0
                                   ? "border-emerald-300 bg-white hover:border-emerald-500 shadow-xs"
                                   : "border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50/80 shadow-xs"
-                              }`}
+                                }`}
                             >
                               <div className="flex items-center gap-3 min-w-0">
                                 <div
-                                  className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl transition-colors ${
-                                    isExpanded
-                                      ? "bg-[#00695C] text-white shadow-xs"
-                                      : selectedCountInCat > 0
+                                  className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl transition-colors ${isExpanded
+                                    ? "bg-[#00695C] text-white shadow-xs"
+                                    : selectedCountInCat > 0
                                       ? "bg-emerald-100 text-[#00695C]"
                                       : "bg-slate-100 text-slate-600 group-hover:bg-slate-200"
-                                  }`}
+                                    }`}
                                 >
                                   {getCategoryIcon(cat.id, displayName)}
                                 </div>
 
                                 <div className="min-w-0">
                                   <p
-                                    className={`text-xs sm:text-sm font-bold truncate leading-tight ${
-                                      isExpanded ? "text-[#00695C]" : "text-slate-800"
-                                    }`}
+                                    className={`text-xs sm:text-sm font-bold truncate leading-tight ${isExpanded ? "text-[#00695C]" : "text-slate-800"
+                                      }`}
                                   >
                                     {displayName}
                                   </p>
@@ -1098,9 +1174,8 @@ export default function AuthScreen({ defaultMode = "register" }) {
                               </div>
 
                               <div
-                                className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-slate-400 transition-transform ${
-                                  isExpanded ? "rotate-180 text-[#00695C]" : ""
-                                }`}
+                                className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-slate-400 transition-transform ${isExpanded ? "rotate-180 text-[#00695C]" : ""
+                                  }`}
                               >
                                 <ChevronDown size={16} />
                               </div>
@@ -1167,18 +1242,16 @@ export default function AuthScreen({ defaultMode = "register" }) {
                                           key={skill.id}
                                           type="button"
                                           onClick={() => handleToggleSkill(skill.id)}
-                                          className={`flex items-center gap-2 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm font-bold transition-all cursor-pointer border ${
-                                            isSelected
-                                              ? "bg-[#00695C] text-white border-[#005448] shadow-sm"
-                                              : "bg-white text-slate-800 border-slate-200 hover:bg-slate-50 hover:border-slate-300 shadow-xs"
-                                          }`}
+                                          className={`flex items-center gap-2 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm font-bold transition-all cursor-pointer border ${isSelected
+                                            ? "bg-[#00695C] text-white border-[#005448] shadow-sm"
+                                            : "bg-white text-slate-800 border-slate-200 hover:bg-slate-50 hover:border-slate-300 shadow-xs"
+                                            }`}
                                         >
                                           <span
-                                            className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border transition-colors ${
-                                              isSelected
-                                                ? "bg-white text-[#00695C] border-white shadow-xs"
-                                                : "border-slate-300 bg-white"
-                                            }`}
+                                            className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border transition-colors ${isSelected
+                                              ? "bg-white text-[#00695C] border-white shadow-xs"
+                                              : "border-slate-300 bg-white"
+                                              }`}
                                           >
                                             {isSelected && (
                                               <Check size={12} strokeWidth={3.5} />
@@ -1409,11 +1482,10 @@ export default function AuthScreen({ defaultMode = "register" }) {
                           onClick={() =>
                             setRegData({ ...regData, agreeTerms: !regData.agreeTerms })
                           }
-                          className={`mt-0.5 w-5 h-5 rounded-md flex items-center justify-center transition-all cursor-pointer shrink-0 border ${
-                            regData.agreeTerms
-                              ? "bg-[#00695C] border-[#00695C] text-white shadow-xs"
-                              : "bg-white border-slate-300 hover:border-[#00695C]"
-                          }`}
+                          className={`mt-0.5 w-5 h-5 rounded-md flex items-center justify-center transition-all cursor-pointer shrink-0 border ${regData.agreeTerms
+                            ? "bg-[#00695C] border-[#00695C] text-white shadow-xs"
+                            : "bg-white border-slate-300 hover:border-[#00695C]"
+                            }`}
                         >
                           {regData.agreeTerms && <Check size={13} strokeWidth={3.5} />}
                         </button>
@@ -1589,31 +1661,6 @@ export default function AuthScreen({ defaultMode = "register" }) {
                         {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
                       </button>
                     </div>
-                  </div>
-
-                  {/* Remember Me */}
-                  <div className="flex items-center justify-between pt-1">
-                    <label className="flex items-center gap-2 cursor-pointer text-xs sm:text-sm text-slate-700 font-medium select-none">
-                      <button
-                        type="button"
-                        role="checkbox"
-                        aria-checked={loginData.rememberMe}
-                        onClick={() =>
-                          setLoginData({
-                            ...loginData,
-                            rememberMe: !loginData.rememberMe,
-                          })
-                        }
-                        className={`w-4 h-4 rounded flex items-center justify-center transition-all cursor-pointer border ${
-                          loginData.rememberMe
-                            ? "bg-[#00695C] border-[#00695C] text-white"
-                            : "bg-white border-slate-300"
-                        }`}
-                      >
-                        {loginData.rememberMe && <Check size={11} strokeWidth={3.5} />}
-                      </button>
-                      <span>{t.login?.rememberMe || (isBn ? "আমাকে মনে রাখুন" : "Remember Me")}</span>
-                    </label>
                   </div>
 
                   {/* Submit Login Button */}

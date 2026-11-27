@@ -36,7 +36,6 @@ import {
 import {
   fetchProviderDashboard,
   fetchUserProfileMe,
-  updateProviderAvailability,
   updateProviderWorkingRadius,
   removeProviderSkill,
   fetchProviderIncomingBookings,
@@ -66,7 +65,6 @@ export default function ProviderHomePage() {
 
   // Interactive controls
   const [isAvailable, setIsAvailable] = useState(true);
-  const [isUpdatingAvailability, setIsUpdatingAvailability] = useState(false);
 
   const [workRadius, setWorkRadius] = useState(5);
   const [lastConfirmedRadius, setLastConfirmedRadius] = useState(5);
@@ -222,31 +220,6 @@ export default function ProviderHomePage() {
   }, [token, activeTab, loadActiveBookings, loadCompletedBookings]);
 
   // Handlers for controls
-  const handleToggleAvailability = async () => {
-    const nextVal = !isAvailable;
-    setIsAvailable(nextVal);
-    setIsUpdatingAvailability(true);
-
-    try {
-      await updateProviderAvailability(nextVal, token, language);
-      showToast(
-        nextVal
-          ? language === "bn"
-            ? "আপনার প্রোফাইল এখন কাজের জন্য সক্রিয়!"
-            : "You are now available for jobs!"
-          : language === "bn"
-          ? "আপনার প্রোফাইল বর্তমানে ব্যস্ত হিসেবে নির্ধারিত হয়েছে।"
-          : "You are currently set to busy."
-      );
-    } catch (err) {
-      console.error("Failed to update availability:", err);
-      setIsAvailable(!nextVal); // revert
-      showToast(err.message || "Failed to update availability", "error");
-    } finally {
-      setIsUpdatingAvailability(false);
-    }
-  };
-
   const handleRadiusChange = async (newVal) => {
     const previous = lastConfirmedRadius;
     const clamped = Math.min(Math.max(Number(newVal), 1), 5);
@@ -397,39 +370,6 @@ export default function ProviderHomePage() {
                   </span>
                 )}
               </div>
-            </div>
-          </div>
-
-          {/* Right: Availability Toggle & Quick Actions */}
-          <div className="flex flex-wrap items-center gap-4">
-            {/* Availability Toggle */}
-            <div className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50/80 px-4 py-2.5 shadow-sm">
-              <div className="text-left">
-                <span className="block text-[11px] uppercase tracking-wider font-bold text-slate-400">
-                  {language === "bn" ? "কাজের অবস্থা" : "Work Status"}
-                </span>
-                <span
-                  className={`text-xs font-bold ${
-                    isAvailable ? "text-[#00695C]" : "text-slate-500"
-                  }`}
-                >
-                  {isAvailable ? d.statusAvailable : d.statusBusy}
-                </span>
-              </div>
-              <button
-                type="button"
-                onClick={handleToggleAvailability}
-                disabled={isUpdatingAvailability}
-                className={`relative inline-flex h-7 w-12 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                  isAvailable ? "bg-[#00695C]" : "bg-slate-300"
-                } disabled:opacity-50`}
-              >
-                <span
-                  className={`pointer-events-none inline-block h-6 w-6 transform rounded-full bg-white shadow-md ring-0 transition duration-200 ease-in-out ${
-                    isAvailable ? "translate-x-5" : "translate-x-0"
-                  }`}
-                />
-              </button>
             </div>
           </div>
         </div>
