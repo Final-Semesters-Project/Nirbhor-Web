@@ -239,7 +239,7 @@ export default function ProviderProfilePage() {
     );
 
     try {
-      const uploadRes = await uploadProfilePhotoToCloudinary(file, token);
+      const uploadRes = await uploadProfilePhotoToCloudinary(file);
       if (uploadRes?.secure_url) {
         setUploadedPhotoUrl(uploadRes.secure_url);
         setUploadedPhotoPublicId(uploadRes.public_id || "");

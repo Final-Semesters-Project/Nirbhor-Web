@@ -44,7 +44,7 @@ import {
   loginUser,
   fetchCategories,
   fetchSkillsByCategory,
-  fetchUserProfileMe,
+  fetchProviderDashboard,
   FALLBACK_CATEGORIES,
   FALLBACK_SKILLS_BY_CATEGORY,
 } from "@/lib/api";
@@ -77,7 +77,7 @@ export default function AuthScreen({ defaultMode = "register" }) {
       const redirectMsg = isBn ? "রিডাইরেক্ট হচ্ছে..." : "Redirecting...";
 
       try {
-        await fetchUserProfileMe(accessToken);
+        await fetchProviderDashboard(accessToken);
         if (!isCancelledRef.current) {
           showToast(redirectMsg, "success", 1800);
           router.replace("/provider/profile");
@@ -556,6 +556,12 @@ export default function AuthScreen({ defaultMode = "register" }) {
         username: usernameClean,
         password: loginData.password,
       });
+
+      // Verify with backend provider-only endpoint so Seekers & Admins are forbidden with backend's error message
+      await fetchProviderDashboard(response.access_token, language);
+      if (response?.role && response.role !== "provider") {
+        throw new Error("This endpoint is for providers only");
+      }
 
       saveAuthSession(response);
       if (typeof window !== "undefined") {

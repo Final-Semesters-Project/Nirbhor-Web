@@ -167,7 +167,7 @@ export default function NidVerificationModal({
             ? "সামনের ছবি সুরক্ষিত সার্ভারে আপলোড হচ্ছে..."
             : "Uploading Front photo to secure cloud..."
         );
-        const frontRes = await uploadNidImageToCloudinary(frontFile, frontSig);
+        const frontRes = await uploadNidImageToCloudinary(frontFile, frontSig, "front");
         finalFrontUrl = frontRes.secure_url;
         finalFrontPublicId = frontRes.public_id;
       }
@@ -186,7 +186,7 @@ export default function NidVerificationModal({
             ? "পেছনের ছবি সুরক্ষিত সার্ভারে আপলোড হচ্ছে..."
             : "Uploading Back photo to secure cloud..."
         );
-        const backRes = await uploadNidImageToCloudinary(backFile, backSig);
+        const backRes = await uploadNidImageToCloudinary(backFile, backSig, "back");
         finalBackUrl = backRes.secure_url;
         finalBackPublicId = backRes.public_id;
       }
